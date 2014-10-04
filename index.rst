@@ -6,18 +6,14 @@
 Welcome to M-Blocks's documentation!
 ====================================
 
-Contents:
-
-.. toctree::
-   :maxdepth: 2
-
 API
-===
+***
+
 .. automodule:: controller
    :members:
 
 Examples
-========
+********
 
 I would recommend importing :mod:`itertools` as it makes things
 easier.

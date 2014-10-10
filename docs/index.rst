@@ -7,6 +7,9 @@ API
 .. automodule:: controller
    :members:
 
+.. autoclass:: Cube
+   :members:
+
 Examples
 ********
 

@@ -60,7 +60,7 @@ class Cube(object):
         state to the goal under a given stimulus function.
 
         Example: move from the current position towards a light source
-            until the light stimulus is over a threshold (the goal).
+        until the light stimulus is over a threshold (the goal).
 
         :param state: Current state of the robot.
         :param goal: Goal state of the robot.

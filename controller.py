@@ -55,20 +55,6 @@ class Cube(object):
 
             time.sleep(t)
 
-    def plan(self, state, goal, stimulus):
-        """Plan a trajectory for the robot to move from the current
-        state to the goal under a given stimulus function.
-
-        Example: move from the current position towards a light source
-        until the light stimulus is over a threshold (the goal).
-
-        :param state: Current state of the robot.
-        :param goal: Goal state of the robot.
-        :param stimulus: Stimulus function that gives an updated state
-            after the robot moves.
-        """
-        pass
-
     def get_orientation(self):
         """Determine orientation of cube.
         """
@@ -103,5 +89,55 @@ class Cube(object):
                 self.reverse = True
                 break
 
-        print 'Orientation: {0}'.format(self.orientation)
-        print 'Reversed: {0}'.format(self.reverse)
+    def change_plane(self, direction):
+        """Change plane to align with a specified direction.
+
+        :param direction: One of {left, right, forward, backward, up,
+            down}. A plane corresponds to two directions: one for each
+            of (left, right), (forward, backward), and (up, down).
+        """
+        forward = 'cp b f 1000 5\n'
+        reverse = 'cp b r 1000 5\n'
+
+        self.get_orientation()
+        if direction in ('forward', 'backward'):
+            d = self.orientation
+        elif direction in ('left', 'right'):
+            d = (self.orientation + 1) % 3
+            # TODO: horizontal movement
+        else:
+            d = self.orientation
+
+        while self.orientation != d:
+            if (self.orientation + 1) % 3 == d:
+                self.ser.write(forward)
+            else:
+                self.ser.write(reverse)
+            self.get_orientation()
+
+    def move(self, direction):
+        """Move cube in specified direction.
+
+        :param direction: One of {left, right, forward, backward, up,
+            down}; case insensitive.
+        """
+        # TODO: Only moves it along the xy-plane
+        self.change_plane(direction)
+
+    def plan(self, state, goal, stimulus, good_enough):
+        """Plan a trajectory for the robot to move from the current
+        state to the goal under a given stimulus function.
+
+        Example: move from the current position towards a light source
+        until the light stimulus is over a threshold (the goal).
+
+        :param state: Current state of the robot.
+        :param goal: Goal state of the robot.
+        :param stimulus: Stimulus function that gives an updated state
+            after the robot moves.
+        :param good_enough: Function that returns True if the current
+            state is close enough to the goal.
+        """
+        while not good_enough(state, goal):
+            direction = stimulus(state, goal)
+            self.move(direction)

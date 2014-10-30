@@ -1,4 +1,5 @@
 import math
+import numpy
 
 def dot(v1, v2):
     """Return the dot product between two vectors.
@@ -19,3 +20,14 @@ def angle(v1, v2):
 
     d = dot(v1, v2)
     return math.acos(d)
+
+def rotate(v, theta):
+    """Rotate vector v by theta degrees.
+    """
+    rot = numpy.array([[numpy.cos(theta), numpy.sin(theta)],
+                       [-numpy.sin(theta), numpy.cos(theta)]])
+    vec = numpy.array(v)
+    res = dot(rot, vec)
+    res[res < 1e-8] = 0
+
+    return res.tolist()

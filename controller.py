@@ -25,6 +25,12 @@ class Cube(object):
 
         self.neighbours = []
 
+        self._left = {1: True, 2: False, -1: False, -2: True}
+        self._right = {1: False, 2: True, -1: True, -2: False}
+
+        # Forward is the along the positive x-axis
+        self.direction = [1, 0]
+
     def disconnect(self):
         """Disconnect a serial connection.
 
@@ -82,38 +88,59 @@ class Cube(object):
             angle = utils.angle(plane, grav) / math.pi * 180
             if angle < thresh:
                 self.orientation = i
-                self.reverse = False
                 break
             elif angle > 180 - thresh:
-                self.orientation = i
-                self.reverse = True
+                self.orientation = -i
                 break
 
     def change_plane(self, direction):
         """Change plane to align with a specified direction.
 
-        :param direction: One of {left, right, forward, backward, up,
-            down}. A plane corresponds to two directions: one for each
-            of (left, right), (forward, backward), and (up, down).
+        :param direction: One of {left, right, up, down}. A plane
+            corresponds to two directions: one for each
+            of (left, right) and (up, down).
         """
         forward = 'cp b f 1000 5\n'
         reverse = 'cp b r 1000 5\n'
 
+        # Need to check if connected to cube and want to move sideways
         self.get_orientation()
-        if direction in ('forward', 'backward'):
-            d = self.orientation
-        elif direction in ('left', 'right'):
-            d = (self.orientation + 1) % 3
-            # TODO: horizontal movement
+        if abs(self.orientation) == 1:
+            d = 2
+        elif abs(self.orientation) == 2:
+            d = 1
         else:
-            d = self.orientation
+            d = 0
 
-        while self.orientation != d:
-            if (self.orientation + 1) % 3 == d:
+        # Check if forward direction should be reversed
+        if direction is 'left' and self._left[self.orientation]:
+            self.reverse = not self.reverse
+        elif direction is 'right' and self._right[self.orientation]:
+            self.reverse = not self.reverse
+
+        # Determine direction of forward vector
+        if direction is 'left':
+            self.direction = utils.rotate(self.direction, math.pi/2)
+        if direction is 'right':
+            self.direction = utils.rotate(self.direction, -math.pi/2)
+
+        print 'Current: {0}'.format(self.orientation)
+        print 'Desired: {0}'.format(d)
+
+        try_num = 0
+        while abs(self.orientation) != d:
+            orient = abs(self.orientation)
+            if (orient + 1) % 3 == d:
                 self.ser.write(forward)
             else:
                 self.ser.write(reverse)
+            time.sleep(15)
             self.get_orientation()
+
+            try_num += 1
+
+        print 'Final: {0} (tries: {1})'.format(self.orientation,
+                try_num)
 
     def move(self, direction):
         """Move cube in specified direction.
@@ -122,7 +149,20 @@ class Cube(object):
             down}; case insensitive.
         """
         # TODO: Only moves it along the xy-plane
-        self.change_plane(direction)
+
+        forward = 'ia f 4000 2500 50\n'
+        reverse = 'ia r 4000 2500 50\n'
+
+        if direction not in ('forward', 'backward'):
+            self.change_plane(direction)
+
+        if self.reverse:
+            forward, reverse = reverse, forward
+        if direction is 'backward':
+            forward, reverse = reverse, forward
+
+        self.ser.write(forward)
+        time.sleep(5)
 
     def plan(self, state, goal, stimulus, good_enough):
         """Plan a trajectory for the robot to move from the current

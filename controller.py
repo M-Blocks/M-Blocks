@@ -2,8 +2,6 @@ from itertools import izip
 
 import math
 import serial
-import sys
-import threading
 import time
 
 import utils
@@ -124,6 +122,8 @@ class Cube(object):
         if direction is 'right':
             self.direction = utils.rotate(self.direction, -math.pi/2)
 
+        print 'Direction: {0}'.format(self.direction)
+
         print 'Current: {0}'.format(self.orientation)
         print 'Desired: {0}'.format(d)
 
@@ -150,8 +150,8 @@ class Cube(object):
         """
         # TODO: Only moves it along the xy-plane
 
-        forward = 'ia f 4000 2500 50\n'
-        reverse = 'ia r 4000 2500 50\n'
+        forward = 'ia f 5000 2000 250\n'
+        reverse = 'ia r 5000 1500 250\n'
 
         if direction not in ('forward', 'backward'):
             self.change_plane(direction)
@@ -164,7 +164,48 @@ class Cube(object):
         self.ser.write(forward)
         time.sleep(5)
 
-    def plan(self, state, goal, stimulus, good_enough):
+    def lattice_planner(self, state, goal):
+        while state != goal:
+            dx, dy = (goal[i] - state[i] for i in range(2))
+            dirx, diry = self.direction
+
+            previous_orientation = self.orientation
+
+            sgnx = utils.sgn(dx)
+            sgny = utils.sgn(dy)
+            if dx != 0:
+                state[0] += sgnx
+                print 'State: {0}'.format(state)
+                if dirx == sgnx:
+                    self.move('forward')
+                elif dirx != 0 and dirx != sgnx:
+                    self.move('backward')
+                elif dirx == 0:
+                    self.change_plane('left')
+                    state[0] -= sgnx
+
+                self.get_orientation()
+                if self.orientation == previous_orientation:
+                    print 'Failure'
+                    state[0] -= dy
+
+            elif dy != 0:
+                state[1] += sgny
+                print 'State: {0}'.format(state)
+                if diry == sgny:
+                    self.move('forward')
+                elif diry != 0 and diry != sgny:
+                    self.move('backward')
+                elif diry == 0:
+                    self.change_plane('left')
+                    state[1] -= sgny
+
+                self.get_orientation()
+                if self.orientation == previous_orientation:
+                    print 'Failure'
+                    state[1] -= dy
+
+    def plan(self, state, goal, stimulus, update, good_enough):
         """Plan a trajectory for the robot to move from the current
         state to the goal under a given stimulus function.
 
@@ -175,9 +216,12 @@ class Cube(object):
         :param goal: Goal state of the robot.
         :param stimulus: Stimulus function that gives an updated state
             after the robot moves.
+        :param update: Update the state to the new state of the
+            system.
         :param good_enough: Function that returns True if the current
             state is close enough to the goal.
         """
         while not good_enough(state, goal):
             direction = stimulus(state, goal)
             self.move(direction)
+            state = update(state, direction)

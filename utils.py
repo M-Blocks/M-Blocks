@@ -1,5 +1,15 @@
 import math
-import numpy
+import numpy as np
+
+def sgn(x):
+    """Return the sign of x.
+    """
+    if x < 0:
+        return -1
+    elif x > 0:
+        return 1
+    else:
+        return 0
 
 def dot(v1, v2):
     """Return the dot product between two vectors.
@@ -24,10 +34,12 @@ def angle(v1, v2):
 def rotate(v, theta):
     """Rotate vector v by theta degrees.
     """
-    rot = numpy.array([[numpy.cos(theta), numpy.sin(theta)],
-                       [-numpy.sin(theta), numpy.cos(theta)]])
-    vec = numpy.array(v)
+    rot = np.array([[np.cos(theta), np.sin(theta)],
+                       [-np.sin(theta), np.cos(theta)]])
+    vec = np.array(v)
     res = dot(rot, vec)
-    res[res < 1e-8] = 0
+    print res
+    res[np.absolute(res) < 1e-8] = 0
+    print res
 
     return res.tolist()

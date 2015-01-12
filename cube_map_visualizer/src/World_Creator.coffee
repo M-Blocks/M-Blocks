@@ -1,14 +1,16 @@
-# This file makes the background for the 3d render
+###
+This file makes the background for the 3d render
 
-# Import a patched version of three.js that includes orbit controls
-#THREE = require './threejs_patched.coffee'
+NOTE: This file will use global three.js functions that have been defined globally in the DOM 
 
+Winter Guerra <winterg@mit.edu>, January 2015
+###
 
 class World
 
 	constructor: () ->
 
-		@camera = @scene = @renderer = @mesh = @controls = undefined
+		@camera = @scene = @renderer = @controls = undefined
 
 		@init()
 		@render()
@@ -27,9 +29,8 @@ class World
 		
 		# Make Camera
 		@camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000)
-		# @camera.position.set (0,0,30)
 		@camera.position.z = 500
-		#@camera.lookAt( new THREE.Vector3() )
+		@camera.lookAt( new THREE.Vector3() )
 		@scene.add(@camera)
 		
 
@@ -37,21 +38,6 @@ class World
 		@controls = new THREE.OrbitControls( @camera)
 		@controls.damping = 0.2
 		@controls.addEventListener( 'change', @render )
-
-		# Make test cube
-		geometry = new THREE.BoxGeometry(10, 10, 10)
-		# texture = THREE.ImageUtils.loadTexture("textures/crate.gif")
-		# texture.anisotropy = renderer.getMaxAnisotropy()
-		# material = new THREE.MeshBasicMaterial(map: texture)
-
-		# Temp texture
-		material = new THREE.MeshLambertMaterial(
-			color: 0xb00000
-			wireframe: false
-		)
-
-		@mesh = new THREE.Mesh(geometry, material)
-		@scene.add @mesh
 
 		# Make lights
 
@@ -85,6 +71,24 @@ class World
 	# Repaint the 3D scene
 	render: () =>
 		@renderer.render @scene, @camera
+
+	# Helper object for adding a mesh or object to the world
+	addObj: (object, position) =>
+		mesh = object.mesh
+
+		if position?
+			mesh.position.set position
+
+		@scene.add mesh
+
+		# refresh the scene
+		@render()
+
+
+
+
+
+
 
 module.exports = new World()
 

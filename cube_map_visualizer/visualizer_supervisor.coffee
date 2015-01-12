@@ -7,13 +7,13 @@ app = http.createServer((req, res) ->
 )
 app.listen 8337, "127.0.0.1"
 console.log "Listening on http://127.0.0.1:8337/"
-console.log "Load http://127.0.0.1:8337/visualizer/ for the demo."
+console.log "Load http://127.0.0.1:8337/ for the demo."
 
 
 # Open the visualizer in chrome
 spawn = require("child_process").spawn
 chrome = spawn("open", [
-  "http://127.0.0.1:8337/visualizer/"
+  "http://127.0.0.1:8337/"
 ])
 # ls.stdout.on "data", (data) ->
 #   console.log "stdout: " + data

@@ -5,6 +5,7 @@ import serial
 import time
 
 import utils
+import gui
 
 class Cube(object):
     def __init__(self, port, baud=115200):
@@ -169,8 +170,6 @@ class Cube(object):
             dx, dy = (goal[i] - state[i] for i in range(2))
             dirx, diry = self.direction
 
-            previous_orientation = self.orientation
-
             sgnx = utils.sgn(dx)
             sgny = utils.sgn(dy)
             if dx != 0:
@@ -184,11 +183,6 @@ class Cube(object):
                     self.change_plane('left')
                     state[0] -= sgnx
 
-                self.get_orientation()
-                if self.orientation == previous_orientation:
-                    print 'Failure'
-                    state[0] -= dy
-
             elif dy != 0:
                 state[1] += sgny
                 print 'State: {0}'.format(state)
@@ -199,11 +193,6 @@ class Cube(object):
                 elif diry == 0:
                     self.change_plane('left')
                     state[1] -= sgny
-
-                self.get_orientation()
-                if self.orientation == previous_orientation:
-                    print 'Failure'
-                    state[1] -= dy
 
     def plan(self, state, goal, stimulus, update, good_enough):
         """Plan a trajectory for the robot to move from the current
@@ -225,3 +214,11 @@ class Cube(object):
             direction = stimulus(state, goal)
             self.move(direction)
             state = update(state, direction)
+
+    def gui(self):
+        root = Tk()
+
+        app = App(root, self)
+
+        root.mainloop()
+        root.destroy()

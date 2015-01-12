@@ -36,7 +36,12 @@ class Cube
 				dynamicTexture = new THREEx.DynamicTexture(256, 256)
 				dynamicTexture.context.font	= "bolder 128px Verdana";
 				dynamicTexture.clear('blue')
-				dynamicTexture.drawText "#{faceNum}", undefined, 192, 'red'
+				dynamicTexture.drawTextCooked "#{faceNum}", {
+					fillStyle: 'red',
+					align: 'center',
+					lineHeight: 0.5
+
+				}
 				faceTextures.push( new THREE.MeshBasicMaterial {map:dynamicTexture.texture})
 
 		# console.log faces

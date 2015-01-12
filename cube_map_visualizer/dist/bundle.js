@@ -33,7 +33,11 @@ Cube = (function() {
       dynamicTexture = new THREEx.DynamicTexture(256, 256);
       dynamicTexture.context.font = "bolder 128px Verdana";
       dynamicTexture.clear('blue');
-      dynamicTexture.drawText("" + faceNum, void 0, 192, 'red');
+      dynamicTexture.drawTextCooked("" + faceNum, {
+        fillStyle: 'red',
+        align: 'center',
+        lineHeight: 0.5
+      });
       return faceTextures.push(new THREE.MeshBasicMaterial({
         map: dynamicTexture.texture
       }));

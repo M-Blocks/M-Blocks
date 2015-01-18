@@ -7,8 +7,7 @@ NOTE: This file will use global three.js functions that have been defined global
 
 Winter Guerra <winterg@mit.edu>, January 2015
  */
-var Cube,
-  __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
+var Cube;
 
 Cube = (function() {
   var separation, size;
@@ -19,7 +18,6 @@ Cube = (function() {
 
   function Cube(options) {
     this.options = options;
-    this.create3DFeatures = __bind(this.create3DFeatures, this);
     this.mesh = void 0;
     this.create3DFeatures();
   }

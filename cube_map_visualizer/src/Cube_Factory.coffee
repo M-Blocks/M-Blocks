@@ -23,7 +23,7 @@ class Cube
 
 		# Set self destruct timer to get rid of cube if it has not been poked in a few seconds.
 
-	create3DFeatures: () =>
+	create3DFeatures: () ->
 
 		# Make 3D cube object
 		geometry = new THREE.BoxGeometry(size, size, size)

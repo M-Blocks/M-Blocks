@@ -11,6 +11,7 @@ import gui
 # For the visualizer
 import requests
 import websocket
+import json
 import shortuuid
 import subprocess
 import os
@@ -253,6 +254,9 @@ class Cube(object):
     def restartVisualizerDaemon(self):
         print "Visualizer supervisor unreacheable. Restarting visualizer."
 
+        # Kill the server
+        subprocess.call(["killall", "node"])
+
         # Try to restart the visualizer process
         sourceDir = os.path.dirname(os.path.realpath(__file__))
         visualizerDir = os.path.join(sourceDir, 'cube_map_visualizer')
@@ -281,13 +285,10 @@ class Cube(object):
             print "### websocket closed ###"
 
         try:
-            onlineCheck = request.get('http://localhost/:8000')
+            onlineCheck = requests.get('http://127.0.0.1:8000/')
             onlineCheck.raise_for_status()
 
-            self.ws = websocket.WebSocketApp("ws://localhost/:8000",
-            on_message = on_message,
-            on_error = on_error,
-            on_close = on_close)
+            self.ws = websocket.create_connection("ws://127.0.0.1:8080/")
         
         except:
             self.restartVisualizerDaemon()
@@ -299,23 +300,26 @@ class Cube(object):
 
     # This function is called once every second and updates the visualizer with the current cube's orientation, serial number, and neighbor locations.
     def updateVisualizer(self):
+        print "Updating vis"
 
         cube_status = {
         'serialNumber': self.serialNumber,
         'orientation': self.orientation,
-        'neighbors': self.neighbors
+        'neighbors': self.neighbors.getNeighbors()
         }
 
-        # Send HTTP PUT request to visualizer
+        # Send websocket data to visualizer
         try:
-            self.ws.send(cube_status)
+            payload = json.dumps(cube_status)
+            self.ws.send(payload)
 
         except:
             # If the visualizer did not update correctly
             print 'Cube visualizer update failed. Check that the visualizer backend is running.'
 
         # Set this function to run every second
-        threading.Timer(1.0, self.updateVisualizer)
+        updateTimer = threading.Timer(1.0, self.updateVisualizer)
+        updateTimer.start()
 
 # This object is used once by each cube class to keep track of its neighboring cubes
 class Neighbors(object):
@@ -349,5 +353,7 @@ if __name__ == "__main__":
 
     cube2 = Cube(port=None)
     cube2.neighbors.setNeighbor(3, 'cube1', 0)
+
+   
 
 

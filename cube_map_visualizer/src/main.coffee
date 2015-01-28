@@ -4,7 +4,11 @@
 # Initialize the world
 world = require './World_Creator.coffee'
 
-# Make the initial cube
-initialCube = require './Cube_Factory.coffee'
+# Make cube class
+Cube = require './Cube_Factory.coffee'
 
-world.addObj initialCube
+# Make a unique cube
+cube1 = new Cube 1234
+
+
+world.addObj cube1.Object3D

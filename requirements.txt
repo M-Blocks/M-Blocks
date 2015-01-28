@@ -1,1 +1,4 @@
 pyserial==2.7
+shortuuid==0.4.2
+websocket-client==0.23.0
+requests==2.5.1

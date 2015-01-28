@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from itertools import izip
 
 import math
@@ -7,28 +8,54 @@ import time
 import utils
 import gui
 
+# For the visualizer
+import requests
+import websocket
+import shortuuid
+import subprocess
+import os
+import threading
+
 class Cube(object):
-    def __init__(self, port, baud=115200):
+    def __init__(self, port, baud=115200, neighbors=None):
         """Connect to a serial port at a given baud rate.
 
         :param port: Port number to connect to.
         :type port: str.
         :param baud: Baud rate (default 115200).
         :type baud: int.
+        :param neighbors: An object that defines the neighbors of a cube.
+        :type neighbors: neighbor object.
         """
-        self.ser = serial.Serial(port, baud, timeout=1)
-        self.ser.write('atd\n')
 
+        # Initialize connection to cube
+        if port is not None: 
+            self.ser = serial.Serial(port, baud, timeout=1)
+            self.ser.write('atd\n')
+        # This allows for "headless" cube instances that do not have serial connections to physical cubes
+        else:
+            self.ser = None
+
+        # Set instance variables
+        # Make a 5 char serialNumber for the cube
+        self.serialNumber = shortuuid.uuid()[:5] 
         self.orientation = 0
         self.reverse = False
 
-        self.neighbours = []
+        # This object keeps track of the cube's neighbors.
+        if neighbors is None:
+            self.neighbors = Neighbors()
+        else: 
+            # the list of neighbors came prepopulated on initialization. Make sure to use them.
+            self.neighbors = neighbors
 
         self._left = {1: True, 2: False, -1: False, -2: True}
         self._right = {1: False, 2: True, -1: True, -2: False}
 
         # Forward is the along the positive x-axis
         self.direction = [1, 0]
+
+        self.initializeVisualizer()
 
     def disconnect(self):
         """Disconnect a serial connection.
@@ -222,3 +249,105 @@ class Cube(object):
 
         root.mainloop()
         root.destroy()
+
+    def restartVisualizerDaemon(self):
+        print "Visualizer supervisor unreacheable. Restarting visualizer."
+
+        # Try to restart the visualizer process
+        sourceDir = os.path.dirname(os.path.realpath(__file__))
+        visualizerDir = os.path.join(sourceDir, 'cube_map_visualizer')
+
+        # cd into visualizer dir
+        os.chdir(visualizerDir)
+
+        visualizerPath = os.path.join(visualizerDir, 'make_dist.sh')
+        print visualizerPath
+        subprocess.Popen([visualizerPath])
+
+        time.sleep(5)
+
+    # This function initiates a connection to the visualizer supervisor process. 
+    def initializeVisualizer(self):
+        # Try to make a connection to the visualizer process. 
+
+        def on_message(ws, message):
+            #print message
+            pass
+
+        def on_error(ws, error):
+            print error
+
+        def on_close(ws):
+            print "### websocket closed ###"
+
+        try:
+            onlineCheck = request.get('http://localhost/:8000')
+            onlineCheck.raise_for_status()
+
+            self.ws = websocket.WebSocketApp("ws://localhost/:8000",
+            on_message = on_message,
+            on_error = on_error,
+            on_close = on_close)
+        
+        except:
+            self.restartVisualizerDaemon()
+            self.initializeVisualizer()
+        
+        # Now, start updating the visualizer every second.
+        self.updateVisualizer()
+
+
+    # This function is called once every second and updates the visualizer with the current cube's orientation, serial number, and neighbor locations.
+    def updateVisualizer(self):
+
+        cube_status = {
+        'serialNumber': self.serialNumber,
+        'orientation': self.orientation,
+        'neighbors': self.neighbors
+        }
+
+        # Send HTTP PUT request to visualizer
+        try:
+            self.ws.send(cube_status)
+
+        except:
+            # If the visualizer did not update correctly
+            print 'Cube visualizer update failed. Check that the visualizer backend is running.'
+
+        # Set this function to run every second
+        threading.Timer(1.0, self.updateVisualizer)
+
+# This object is used once by each cube class to keep track of its neighboring cubes
+class Neighbors(object):
+    def __init__(self):
+        self.neighbors = {1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
+
+    # This method sets/overrides the neighbor registration at a certain face. Orientation is in degrees I.E(0, 90, 180, 270).
+    def setNeighbor(self, face, serialNumber, orientation):
+
+        self.neighbors[face] = {
+            'serialNumber': serialNumber,
+            'orientation': orientation
+        }
+
+    # Get the python dictionary that represents this cube's neighbors
+    def getNeighbors(self):
+        return self.neighbors
+
+
+
+# Main loop for running program via command line
+if __name__ == "__main__":
+    # Create a cube object with a neighbor on face 1
+    cube1 = Cube(port=None)
+    cube1.neighbors.setNeighbor(1, 'cube2', 0)
+
+    # Create a second cube object with no neighbors
+    lonelyCube = Cube(port=None)
+
+    # Create a third cube object with cube1 as a neighbor on face 3
+
+    cube2 = Cube(port=None)
+    cube2.neighbors.setNeighbor(3, 'cube1', 0)
+
+

@@ -10,47 +10,116 @@ Winter Guerra <winterg@mit.edu>, January 2015
 var Cube;
 
 Cube = (function() {
-  var separation, size;
+  var faceTexture, separation, size;
 
   size = 10;
 
   separation = size;
 
-  function Cube(options) {
-    this.options = options;
-    this.mesh = void 0;
+  faceTexture = void 0;
+
+  function Cube(serialNumber, orientation) {
+    this.serialNumber = serialNumber;
+    this.orientation = orientation;
+    this.Object3D = new THREE.Object3D();
     this.create3DFeatures();
   }
 
+  Cube.prototype.getObject3D = function() {};
+
   Cube.prototype.create3DFeatures = function() {
-    var faceNum, faceTextures, geometry, _fn, _i;
+    var faceNum, faceTextures, geometry, mesh, serialNumberSprite, _fn, _i;
     geometry = new THREE.BoxGeometry(size, size, size);
-    faceTextures = [];
-    _fn = function(faceNum) {
-      var dynamicTexture;
-      dynamicTexture = new THREEx.DynamicTexture(256, 256);
-      dynamicTexture.context.font = "bolder 128px Verdana";
-      dynamicTexture.clear('blue');
-      dynamicTexture.drawTextCooked("" + faceNum, {
-        fillStyle: 'red',
-        align: 'center',
-        lineHeight: 0.5
-      });
-      return faceTextures.push(new THREE.MeshBasicMaterial({
-        map: dynamicTexture.texture
-      }));
-    };
-    for (faceNum = _i = 1; _i <= 6; faceNum = ++_i) {
-      _fn(faceNum);
+    if (typeof faceTextures === "undefined" || faceTextures === null) {
+      faceTextures = [];
+      _fn = function(faceNum) {
+        var dynamicTexture;
+        dynamicTexture = new THREEx.DynamicTexture(256, 256);
+        dynamicTexture.context.font = "bolder 128px Verdana";
+        dynamicTexture.clear('blue');
+        dynamicTexture.drawTextCooked("" + faceNum, {
+          fillStyle: 'red',
+          align: 'center',
+          lineHeight: 0.5
+        });
+        return faceTextures.push(new THREE.MeshBasicMaterial({
+          map: dynamicTexture.texture
+        }));
+      };
+      for (faceNum = _i = 1; _i <= 6; faceNum = ++_i) {
+        _fn(faceNum);
+      }
+      faceTexture = new THREE.MeshFaceMaterial(faceTextures);
     }
-    return this.mesh = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(faceTextures));
+    mesh = new THREE.Mesh(geometry, faceTexture);
+    this.Object3D.add(mesh);
+    console.log("Serial number: " + this.serialNumber);
+    serialNumberSprite = this.makeTextSprite("" + this.serialNumber);
+    return this.Object3D.add(serialNumberSprite);
+  };
+
+  Cube.prototype.makeTextSprite = function(message, parameters) {
+    var backgroundColor, borderColor, borderThickness, canvas, context, fontface, fontsize, metrics, sprite, spriteMaterial, textWidth, texture;
+    if (parameters === undefined) {
+      parameters = {};
+    }
+    fontface = "Arial";
+    fontsize = 18;
+    borderThickness = 4;
+    borderColor = (parameters.hasOwnProperty("borderColor") ? parameters["borderColor"] : {
+      r: 0,
+      g: 0,
+      b: 0,
+      a: 1.0
+    });
+    backgroundColor = (parameters.hasOwnProperty("backgroundColor") ? parameters["backgroundColor"] : {
+      r: 255,
+      g: 255,
+      b: 255,
+      a: 1.0
+    });
+    canvas = document.createElement("canvas");
+    context = canvas.getContext("2d");
+    context.font = "Bold " + fontsize + "px " + fontface;
+    metrics = context.measureText(message);
+    textWidth = metrics.width;
+    context.fillStyle = "rgba(" + backgroundColor.r + "," + backgroundColor.g + "," + backgroundColor.b + "," + backgroundColor.a + ")";
+    context.strokeStyle = "rgba(" + borderColor.r + "," + borderColor.g + "," + borderColor.b + "," + borderColor.a + ")";
+    context.lineWidth = borderThickness;
+    this.roundRect(context, borderThickness / 2, borderThickness / 2, textWidth + borderThickness, fontsize * 1.4 + borderThickness, 6);
+    context.fillStyle = "rgba(0, 0, 0, 1.0)";
+    context.fillText(message, borderThickness, fontsize + borderThickness);
+    texture = new THREE.Texture(canvas);
+    texture.needsUpdate = true;
+    spriteMaterial = new THREE.SpriteMaterial({
+      map: texture
+    });
+    sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(100, 50, 1.0);
+    return sprite;
+  };
+
+  Cube.prototype.roundRect = function(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   };
 
   return Cube;
 
 })();
 
-module.exports = new Cube();
+module.exports = Cube;
 
 
 
@@ -123,12 +192,10 @@ World = (function() {
   };
 
   World.prototype.addObj = function(object, position) {
-    var mesh;
-    mesh = object.mesh;
     if (position != null) {
-      mesh.position.set(position);
+      object.position.set(position);
     }
-    this.scene.add(mesh);
+    this.scene.add(object);
     return this.render();
   };
 
@@ -141,13 +208,15 @@ module.exports = new World();
 
 
 },{}],3:[function(require,module,exports){
-var initialCube, world;
+var Cube, cube1, world;
 
 world = require('./World_Creator.coffee');
 
-initialCube = require('./Cube_Factory.coffee');
+Cube = require('./Cube_Factory.coffee');
 
-world.addObj(initialCube);
+cube1 = new Cube(1234);
+
+world.addObj(cube1.Object3D);
 
 
 

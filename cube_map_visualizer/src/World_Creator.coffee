@@ -74,12 +74,11 @@ class World
 
 	# Helper object for adding a mesh or object to the world
 	addObj: (object, position) =>
-		mesh = object.mesh
 
 		if position?
-			mesh.position.set position
+			object.position.set position
 
-		@scene.add mesh
+		@scene.add object
 
 		# refresh the scene
 		@render()

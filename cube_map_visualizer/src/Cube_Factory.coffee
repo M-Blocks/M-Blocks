@@ -48,19 +48,22 @@ class Cube extends EventEmitter
 		geometry = new THREE.BoxGeometry(size, size, size)
 
 		
-		# # Make a texture with the 3 digit serial number of the cube
+		# # Make a texture with the 3 digit serial number and face name for each side of the cube
 
-		dynamicTexture = new THREEx.DynamicTexture(256, 256)
-		dynamicTexture.context.font	= "bolder 128px Verdana";
-		dynamicTexture.clear('blue')
-		dynamicTexture.drawTextCooked "#{@serialNumber}", {
-			fillStyle: 'red',
-			align: 'center',
-			lineHeight: 0.5
+		faceTextures = []
 
-		}
+		for faceLabel in ['x+', 'x-', 'y+', 'y-', 'z+', 'z-']
 
-		faceTextures = (new THREE.MeshBasicMaterial({map:dynamicTexture.texture}) for i in [0..6])
+			dynamicTexture = new THREEx.DynamicTexture(256, 256)
+			dynamicTexture.context.font	= "bolder 128px Verdana";
+			dynamicTexture.clear('blue')
+			dynamicTexture.drawTextCooked "#{@serialNumber}\n#{faceLabel}", {
+				fillStyle: 'red',
+				align: 'center',
+				lineHeight: 0.35
+			}
+			faceTextures.push new THREE.MeshBasicMaterial({map:dynamicTexture.texture})
+
 		# Save the texture in a class variable
 		serialNumberTexture = new THREE.MeshFaceMaterial(faceTextures) 
 			

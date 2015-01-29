@@ -1515,26 +1515,24 @@ Cube = (function(_super) {
   };
 
   Cube.prototype.create3DFeatures = function() {
-    var dynamicTexture, faceTextures, geometry, i, mesh, serialNumberTexture;
+    var dynamicTexture, faceLabel, faceTextures, geometry, mesh, serialNumberTexture, _i, _len, _ref;
     geometry = new THREE.BoxGeometry(size, size, size);
-    dynamicTexture = new THREEx.DynamicTexture(256, 256);
-    dynamicTexture.context.font = "bolder 128px Verdana";
-    dynamicTexture.clear('blue');
-    dynamicTexture.drawTextCooked("" + this.serialNumber, {
-      fillStyle: 'red',
-      align: 'center',
-      lineHeight: 0.5
-    });
-    faceTextures = (function() {
-      var _i, _results;
-      _results = [];
-      for (i = _i = 0; _i <= 6; i = ++_i) {
-        _results.push(new THREE.MeshBasicMaterial({
-          map: dynamicTexture.texture
-        }));
-      }
-      return _results;
-    })();
+    faceTextures = [];
+    _ref = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'];
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      faceLabel = _ref[_i];
+      dynamicTexture = new THREEx.DynamicTexture(256, 256);
+      dynamicTexture.context.font = "bolder 128px Verdana";
+      dynamicTexture.clear('blue');
+      dynamicTexture.drawTextCooked("" + this.serialNumber + "\n" + faceLabel, {
+        fillStyle: 'red',
+        align: 'center',
+        lineHeight: 0.35
+      });
+      faceTextures.push(new THREE.MeshBasicMaterial({
+        map: dynamicTexture.texture
+      }));
+    }
     serialNumberTexture = new THREE.MeshFaceMaterial(faceTextures);
     mesh = new THREE.Mesh(geometry, serialNumberTexture);
     return this.Object3D.add(mesh);
@@ -1713,7 +1711,7 @@ CubeManager = (function() {
   };
 
   CubeManager.prototype.rearrangeCubes = function(cubes, startingPosition) {
-    var originCube;
+    var centerPosition, originCube;
     if (startingPosition == null) {
       startingPosition = [0, 0, 0];
     }
@@ -1721,11 +1719,12 @@ CubeManager = (function() {
     if (originCube === null) {
       return;
     }
-    return originCube.Object3D.position.set(new THREE.Vector3(startingPosition));
+    originCube.Object3D.position.set(new THREE.Vector3(startingPosition));
+    return centerPosition = originCube.Object3D.position;
   };
 
   CubeManager.prototype.getCubeWithMostNeighbors = function(cubes) {
-    var connection, connections, cube, originCube, returnObj, serialNumber, value, _ref;
+    var connections, cube, face, neighborObj, originCube, returnObj, serialNumber, _ref;
     originCube = {
       serialNumber: null,
       connections: -1
@@ -1734,9 +1733,9 @@ CubeManager = (function() {
       cube = cubes[serialNumber];
       connections = 0;
       _ref = cube.neighbors;
-      for (connection in _ref) {
-        value = _ref[connection];
-        if (value) {
+      for (face in _ref) {
+        neighborObj = _ref[face];
+        if (neighborObj) {
           connections = connections + 1;
         }
       }

@@ -322,7 +322,7 @@ class Cube(object):
 # This object is used once by each cube class to keep track of its neighboring cubes
 class Neighbors(object):
     def __init__(self):
-        self.neighbors = {1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
+        self.neighbors = {'x+': None, 'x-': None, 'y+': None, 'y-': None, 'z+': None, 'z-': None}
 
     # This method sets/overrides the neighbor registration at a certain face. Orientation is in degrees I.E(0, 90, 180, 270).
     def setNeighbor(self, face, serialNumber, orientation):
@@ -345,12 +345,12 @@ if __name__ == "__main__":
     cube2 = Cube(port=None, serialNumber='C2')
     
     # Create a cube object with a neighbor on face 1
-    cube1.neighbors.setNeighbor(1, 'C2', 0)
+    cube1.neighbors.setNeighbor('z+', 'C2', 0)
 
     # Create a second cube object with no neighbors
 
     # Create a third cube object with cube1 as a neighbor on face 3
-    cube2.neighbors.setNeighbor(3, 'C1', 0)
+    cube2.neighbors.setNeighbor('z-', 'C1', 0)
 
    
 

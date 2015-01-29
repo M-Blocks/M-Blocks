@@ -25,11 +25,6 @@ class CubeManager
 			payload = JSON.parse(message.data)
 			@update_cube_status(payload)
 
-		## Debugging functions
-		# Make a unique cube
-		# cube1 = new Cube {serialNumber:123}
-		# @world.addObj cube1.Object3D
-
 	update_cube_status: (cube_status) =>
 		# Check if the cube is currently in our world
 		cubeSerialNumber = cube_status.serialNumber
@@ -71,8 +66,13 @@ class CubeManager
 		if originCube is null
 			return
 		# Place the origin cube
-
 		originCube.Object3D.position.set( new THREE.Vector3(startingPosition) )
+
+		# Now, find and place all of the origin cube's neighbors
+		centerPosition = originCube.Object3D.position
+
+		
+
 		
 		# Debug
 		#console.log "Origin cube: ", originCube
@@ -85,8 +85,8 @@ class CubeManager
 		for serialNumber, cube of cubes
 			# Count the connections
 			connections = 0
-			for connection, value of cube.neighbors
-				if value
+			for face, neighborObj of cube.neighbors
+				if neighborObj
 					connections = connections + 1
 
 			# Now, check to see if this is the most connected cube

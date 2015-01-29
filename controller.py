@@ -39,7 +39,7 @@ class Cube(object):
 
         # Set instance variables
         # Make a 5 char serialNumber for the cube
-        self.serialNumber = shortuuid.uuid()[:5] 
+        self.serialNumber = shortuuid.uuid()[:3] 
         self.orientation = 0
         self.reverse = False
 
@@ -300,7 +300,7 @@ class Cube(object):
 
     # This function is called once every second and updates the visualizer with the current cube's orientation, serial number, and neighbor locations.
     def updateVisualizer(self):
-        print "Updating vis"
+        #print "Updating visualizer"
 
         cube_status = {
         'serialNumber': self.serialNumber,

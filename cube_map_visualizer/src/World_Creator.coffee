@@ -76,20 +76,26 @@ class World
 	addObj: (object, position) =>
 
 		if position?
-			object.position.set position
+			object.position.set(position)
 
-		@scene.add object
+		@scene.add(object)
 
 		# refresh the scene
 		@render()
 
+	removeObj: (objectName) =>
+		@scene.remove(objectName)
+
+		@render()
+
+	positionObj: (objectName, position) =>
+		object = @scene.getObjectByName(objectName)
+		object.position.set(position)
 
 
 
 
-
-
-module.exports = new World()
+module.exports = World
 
 
 

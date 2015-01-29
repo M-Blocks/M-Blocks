@@ -1663,6 +1663,7 @@ u = require('underscore');
 
 CubeManager = (function() {
   function CubeManager() {
+    this.getCubeWithMostNeighbors = __bind(this.getCubeWithMostNeighbors, this);
     this.rearrangeCubes = __bind(this.rearrangeCubes, this);
     this.makeNewCube = __bind(this.makeNewCube, this);
     this.update_cube_status = __bind(this.update_cube_status, this);
@@ -1684,16 +1685,18 @@ CubeManager = (function() {
   CubeManager.prototype.update_cube_status = function(cube_status) {
     var cube, cubeSerialNumber;
     cubeSerialNumber = cube_status.serialNumber;
-    cube = void 0;
+    cube = null;
     if (u.has(this.cubeDatabase, cubeSerialNumber)) {
       cube = this.cubeDatabase[cubeSerialNumber];
       cube.resetSelfDestructTimer();
+      cube.neighbors = cube_status.neighbors;
+      cube.orientation = cube_status.orientation;
     } else {
       cube = this.makeNewCube(cube_status);
     }
     this.cubeDatabase[cubeSerialNumber] = cube;
     this.world.addObj(cube.Object3D);
-    return this.rearrangeCubes();
+    return this.rearrangeCubes(this.cubeDatabase);
   };
 
   CubeManager.prototype.makeNewCube = function(cube_status) {
@@ -1702,13 +1705,49 @@ CubeManager = (function() {
     cube.on('selfDestruct', (function(_this) {
       return function() {
         console.log("Self destruct initiated for " + cube.serialNumber + ".");
-        return _this.world.removeObj(cube.serialNumber);
+        _this.world.removeObj(cube.serialNumber);
+        return delete _this.cubeDatabase[cube.serialNumber];
       };
     })(this));
     return cube;
   };
 
-  CubeManager.prototype.rearrangeCubes = function() {};
+  CubeManager.prototype.rearrangeCubes = function(cubes, startingPosition) {
+    var originCube;
+    if (startingPosition == null) {
+      startingPosition = [0, 0, 0];
+    }
+    originCube = this.getCubeWithMostNeighbors(cubes);
+    if (originCube === null) {
+      return;
+    }
+    return originCube.Object3D.position.set(new THREE.Vector3(startingPosition));
+  };
+
+  CubeManager.prototype.getCubeWithMostNeighbors = function(cubes) {
+    var connection, connections, cube, originCube, returnObj, serialNumber, value, _ref;
+    originCube = {
+      serialNumber: null,
+      connections: -1
+    };
+    for (serialNumber in cubes) {
+      cube = cubes[serialNumber];
+      connections = 0;
+      _ref = cube.neighbors;
+      for (connection in _ref) {
+        value = _ref[connection];
+        if (value) {
+          connections = connections + 1;
+        }
+      }
+      if (connections > originCube.connections) {
+        originCube.serialNumber = serialNumber;
+        originCube.connections = connections;
+      }
+    }
+    returnObj = originCube.serialNumber !== null ? this.cubeDatabase[originCube.serialNumber] : null;
+    return returnObj;
+  };
 
   return CubeManager;
 

@@ -18,7 +18,7 @@ import os
 import threading
 
 class Cube(object):
-    def __init__(self, port, baud=115200, neighbors=None):
+    def __init__(self, port, baud=115200, serialNumber=None):
         """Connect to a serial port at a given baud rate.
 
         :param port: Port number to connect to.
@@ -38,17 +38,14 @@ class Cube(object):
             self.ser = None
 
         # Set instance variables
-        # Make a 5 char serialNumber for the cube
-        self.serialNumber = shortuuid.uuid()[:3] 
+        # Make a 3 char or custom serialNumber for the cube
+        self.serialNumber = serialNumber if serialNumber else shortuuid.uuid()[:3] 
         self.orientation = 0
         self.reverse = False
 
-        # This object keeps track of the cube's neighbors.
-        if neighbors is None:
-            self.neighbors = Neighbors()
-        else: 
-            # the list of neighbors came prepopulated on initialization. Make sure to use them.
-            self.neighbors = neighbors
+        # This object keeps track of the cube's neighbors.    
+        self.neighbors = Neighbors()
+        
 
         self._left = {1: True, 2: False, -1: False, -2: True}
         self._right = {1: False, 2: True, -1: True, -2: False}
@@ -300,13 +297,14 @@ class Cube(object):
 
     # This function is called once every second and updates the visualizer with the current cube's orientation, serial number, and neighbor locations.
     def updateVisualizer(self):
-        #print "Updating visualizer"
 
         cube_status = {
         'serialNumber': self.serialNumber,
         'orientation': self.orientation,
         'neighbors': self.neighbors.getNeighbors()
         }
+
+        #print "Updating visualizer", cube_status
 
         # Send websocket data to visualizer
         try:
@@ -342,17 +340,17 @@ class Neighbors(object):
 
 # Main loop for running program via command line
 if __name__ == "__main__":
+    cube1 = Cube(port=None, serialNumber='C1')
+    lonelyCube = Cube(port=None, serialNumber='Lon')
+    cube2 = Cube(port=None, serialNumber='C2')
+    
     # Create a cube object with a neighbor on face 1
-    cube1 = Cube(port=None)
-    cube1.neighbors.setNeighbor(1, 'cube2', 0)
+    cube1.neighbors.setNeighbor(1, 'C2', 0)
 
     # Create a second cube object with no neighbors
-    lonelyCube = Cube(port=None)
 
     # Create a third cube object with cube1 as a neighbor on face 3
-
-    cube2 = Cube(port=None)
-    cube2.neighbors.setNeighbor(3, 'cube1', 0)
+    cube2.neighbors.setNeighbor(3, 'C1', 0)
 
    
 

@@ -1,3 +1,5 @@
+"use strict"
+
 # Libraries
 WebSocket = require 'ws'
 Cube = require './Cube_Factory.coffee'
@@ -53,6 +55,7 @@ class CubeManager
 	makeNewCube: (cube_status) =>
 		cube = new Cube(cube_status)
 		cube.on 'selfDestruct', () =>
+			console.log "Self destruct initiated for #{cube.serialNumber}."
 			@world.removeObj(cube.serialNumber)
 
 		return cube

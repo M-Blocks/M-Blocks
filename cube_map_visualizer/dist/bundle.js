@@ -1469,6 +1469,7 @@ NOTE: This file will use global three.js functions that have been defined global
 
 Winter Guerra <winterg@mit.edu>, January 2015
  */
+"use strict";
 var Cube, EventEmitter,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
   __hasProp = {}.hasOwnProperty,
@@ -1501,11 +1502,12 @@ Cube = (function(_super) {
   }
 
   Cube.prototype.setSelfDestructTimer = function() {
-    return this.selfDestructTimer = setTimeout(self.selfDestruct, timeToLive * 1000);
+    return this.selfDestructTimer = setTimeout(this.selfDestruct, timeToLive * 1000);
   };
 
   Cube.prototype.resetSelfDestructTimer = function() {
-    return clearTimeout(this.selfDestructTimer);
+    clearTimeout(this.selfDestructTimer);
+    return this.setSelfDestructTimer();
   };
 
   Cube.prototype.selfDestruct = function() {
@@ -1555,6 +1557,7 @@ NOTE: This file will use global three.js functions that have been defined global
 
 Winter Guerra <winterg@mit.edu>, January 2015
  */
+"use strict";
 var World,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
@@ -1625,7 +1628,9 @@ World = (function() {
   };
 
   World.prototype.removeObj = function(objectName) {
-    this.scene.remove(objectName);
+    var object;
+    object = this.scene.getObjectByName(objectName);
+    this.scene.remove(object);
     return this.render();
   };
 
@@ -1644,6 +1649,7 @@ module.exports = World;
 
 
 },{}],5:[function(require,module,exports){
+"use strict";
 var Cube, CubeManager, WebSocket, World, cubeManager, u,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
@@ -1695,6 +1701,7 @@ CubeManager = (function() {
     cube = new Cube(cube_status);
     cube.on('selfDestruct', (function(_this) {
       return function() {
+        console.log("Self destruct initiated for " + cube.serialNumber + ".");
         return _this.world.removeObj(cube.serialNumber);
       };
     })(this));

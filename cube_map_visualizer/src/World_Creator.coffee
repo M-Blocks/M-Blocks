@@ -6,6 +6,8 @@ NOTE: This file will use global three.js functions that have been defined global
 Winter Guerra <winterg@mit.edu>, January 2015
 ###
 
+"use strict"
+
 class World
 
 	constructor: () ->
@@ -84,7 +86,8 @@ class World
 		@render()
 
 	removeObj: (objectName) =>
-		@scene.remove(objectName)
+		object = @scene.getObjectByName(objectName)
+		@scene.remove(object)
 
 		@render()
 

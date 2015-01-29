@@ -6,6 +6,8 @@ NOTE: This file will use global three.js functions that have been defined global
 Winter Guerra <winterg@mit.edu>, January 2015
 ###
 
+"use strict"
+
 EventEmitter = require('events').EventEmitter
 
 class Cube extends EventEmitter
@@ -30,10 +32,11 @@ class Cube extends EventEmitter
 		@setSelfDestructTimer()
 
 	setSelfDestructTimer: () =>
-		@selfDestructTimer = setTimeout(self.selfDestruct, timeToLive*1000)
+		@selfDestructTimer = setTimeout(@selfDestruct, timeToLive*1000)
 
 	resetSelfDestructTimer: () =>
 		clearTimeout(@selfDestructTimer)
+		@setSelfDestructTimer()
 
 	selfDestruct: () =>
 		@emit('selfDestruct')

@@ -77,8 +77,9 @@ class World
 	# Helper object for adding a mesh or object to the world
 	addObj: (object, position) =>
 
-		if position?
-			object.position.set(position)
+		if not position?
+			position = new THREE.Vector3()
+		object.position.copy(position)
 
 		@scene.add(object)
 
@@ -93,7 +94,9 @@ class World
 
 	positionObj: (objectName, position) =>
 		object = @scene.getObjectByName(objectName)
-		object.position.set(position)
+		object.position.copy(position)
+		# refresh the scene
+		@render()
 
 
 

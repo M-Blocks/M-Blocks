@@ -13,9 +13,9 @@ EventEmitter = require('events').EventEmitter
 class Cube extends EventEmitter
 
 	# Class variables
-	size = 10
-	separation = size # Distance that all cubes should be from each other in XYZ
-	timeToLive = 5 # seconds
+	@size = 10
+	@separation = @size # Distance that all cubes should be from each other in XYZ
+	@timeToLive = 5 # seconds
 
 	constructor: (options) ->
 
@@ -31,8 +31,10 @@ class Cube extends EventEmitter
 		# Set self destruct timer to get rid of cube if it has not been poked in a few seconds.
 		@setSelfDestructTimer()
 
+		console.log "cube #{@serialNumber} instance created"
+
 	setSelfDestructTimer: () =>
-		@selfDestructTimer = setTimeout(@selfDestruct, timeToLive*1000)
+		@selfDestructTimer = setTimeout(@selfDestruct, Cube.timeToLive*1000)
 
 	resetSelfDestructTimer: () =>
 		clearTimeout(@selfDestructTimer)
@@ -42,10 +44,10 @@ class Cube extends EventEmitter
 		@emit('selfDestruct')
 
 
-	create3DFeatures: () ->
+	create3DFeatures: () =>
 
 		# Make 3D cube object
-		geometry = new THREE.BoxGeometry(size, size, size)
+		geometry = new THREE.BoxGeometry(Cube.size, Cube.size, Cube.size)
 
 		
 		# # Make a texture with the 3 digit serial number and face name for each side of the cube

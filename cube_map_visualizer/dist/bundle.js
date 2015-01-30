@@ -1478,17 +1478,16 @@ var Cube, EventEmitter,
 EventEmitter = require('events').EventEmitter;
 
 Cube = (function(_super) {
-  var separation, size, timeToLive;
-
   __extends(Cube, _super);
 
-  size = 10;
+  Cube.size = 10;
 
-  separation = size;
+  Cube.separation = Cube.size;
 
-  timeToLive = 5;
+  Cube.timeToLive = 5;
 
   function Cube(options) {
+    this.create3DFeatures = __bind(this.create3DFeatures, this);
     this.selfDestruct = __bind(this.selfDestruct, this);
     this.resetSelfDestructTimer = __bind(this.resetSelfDestructTimer, this);
     this.setSelfDestructTimer = __bind(this.setSelfDestructTimer, this);
@@ -1499,10 +1498,11 @@ Cube = (function(_super) {
     this.selfDestructTimer = void 0;
     this.create3DFeatures();
     this.setSelfDestructTimer();
+    console.log("cube " + this.serialNumber + " instance created");
   }
 
   Cube.prototype.setSelfDestructTimer = function() {
-    return this.selfDestructTimer = setTimeout(this.selfDestruct, timeToLive * 1000);
+    return this.selfDestructTimer = setTimeout(this.selfDestruct, Cube.timeToLive * 1000);
   };
 
   Cube.prototype.resetSelfDestructTimer = function() {
@@ -1516,7 +1516,7 @@ Cube = (function(_super) {
 
   Cube.prototype.create3DFeatures = function() {
     var dynamicTexture, faceLabel, faceTextures, geometry, mesh, serialNumberTexture, _i, _len, _ref;
-    geometry = new THREE.BoxGeometry(size, size, size);
+    geometry = new THREE.BoxGeometry(Cube.size, Cube.size, Cube.size);
     faceTextures = [];
     _ref = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'];
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
@@ -1618,9 +1618,10 @@ World = (function() {
   };
 
   World.prototype.addObj = function(object, position) {
-    if (position != null) {
-      object.position.set(position);
+    if (position == null) {
+      position = new THREE.Vector3();
     }
+    object.position.copy(position);
     this.scene.add(object);
     return this.render();
   };
@@ -1635,7 +1636,8 @@ World = (function() {
   World.prototype.positionObj = function(objectName, position) {
     var object;
     object = this.scene.getObjectByName(objectName);
-    return object.position.set(position);
+    object.position.copy(position);
+    return this.render();
   };
 
   return World;
@@ -1649,7 +1651,8 @@ module.exports = World;
 },{}],5:[function(require,module,exports){
 "use strict";
 var Cube, CubeManager, WebSocket, World, cubeManager, u,
-  __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
+  __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
+  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 WebSocket = require('ws');
 
@@ -1662,6 +1665,7 @@ u = require('underscore');
 CubeManager = (function() {
   function CubeManager() {
     this.getCubeWithMostNeighbors = __bind(this.getCubeWithMostNeighbors, this);
+    this.getCubeNeighbors = __bind(this.getCubeNeighbors, this);
     this.rearrangeCubes = __bind(this.rearrangeCubes, this);
     this.makeNewCube = __bind(this.makeNewCube, this);
     this.update_cube_status = __bind(this.update_cube_status, this);
@@ -1669,7 +1673,7 @@ CubeManager = (function() {
     this.world = new World();
     this.ws = new WebSocket('ws://127.0.0.1:8080');
     this.ws.onopen = function() {
-      return console.log('Socket opened');
+      return console.log('Data socket to visualizer server opened');
     };
     this.ws.onmessage = (function(_this) {
       return function(message, flags) {
@@ -1679,6 +1683,36 @@ CubeManager = (function() {
       };
     })(this);
   }
+
+  CubeManager.prototype.getLocalTranslationForFace = function(face) {
+    switch (face) {
+      case 'x+':
+        return new THREE.Vector3(Cube.size, 0, 0);
+      case 'x-':
+        return new THREE.Vector3(-Cube.size, 0, 0);
+      case 'y+':
+        return new THREE.Vector3(0, Cube.size, 0);
+      case 'y-':
+        return new THREE.Vector3(0, -Cube.size, 0);
+      case 'z+':
+        return new THREE.Vector3(0, 0, Cube.size);
+      case 'z-':
+        return new THREE.Vector3(0, 0, -Cube.size);
+      default:
+        console.error("ERROR: unrecognized face ", face, " used for translation.");
+        return new THREE.Vector3(0, 0, 0);
+    }
+  };
+
+  CubeManager.prototype.getGlobalPositionUsingRelativePositioning = function(originVec, rotationEuler, localTranslationVec) {
+    var globalTranslationVector, newLocalTranslationVec;
+    newLocalTranslationVec = new THREE.Vector3();
+    newLocalTranslationVec.copy(localTranslationVec);
+    newLocalTranslationVec.applyEuler(rotationEuler);
+    globalTranslationVector = new THREE.Vector3();
+    globalTranslationVector.addVectors(originVec, newLocalTranslationVec);
+    return globalTranslationVector;
+  };
 
   CubeManager.prototype.update_cube_status = function(cube_status) {
     var cube, cubeSerialNumber;
@@ -1691,9 +1725,9 @@ CubeManager = (function() {
       cube.orientation = cube_status.orientation;
     } else {
       cube = this.makeNewCube(cube_status);
+      this.world.addObj(cube.Object3D);
     }
     this.cubeDatabase[cubeSerialNumber] = cube;
-    this.world.addObj(cube.Object3D);
     return this.rearrangeCubes(this.cubeDatabase);
   };
 
@@ -1711,16 +1745,53 @@ CubeManager = (function() {
   };
 
   CubeManager.prototype.rearrangeCubes = function(cubes, startingPosition) {
-    var centerPosition, originCube;
+    var centerCubePosition, cubeObj, globalPosition, localFace, localRotation, localTranslation, neighbors, orientation, originCube, placedCubes, serialNumber, _i, _len, _ref, _results;
     if (startingPosition == null) {
-      startingPosition = [0, 0, 0];
+      startingPosition = new THREE.Vector3();
     }
     originCube = this.getCubeWithMostNeighbors(cubes);
     if (originCube === null) {
       return;
     }
-    originCube.Object3D.position.set(new THREE.Vector3(startingPosition));
-    return centerPosition = originCube.Object3D.position;
+    originCube.Object3D.position.copy(startingPosition);
+    centerCubePosition = originCube.Object3D.position;
+    localRotation = new THREE.Euler(0, 0, 0, 'XYZ');
+    placedCubes = [originCube.serialNumber];
+    neighbors = this.getCubeNeighbors(originCube);
+    _results = [];
+    for (_i = 0, _len = neighbors.length; _i < _len; _i++) {
+      _ref = neighbors[_i], cubeObj = _ref.cubeObj, localFace = _ref.localFace, serialNumber = _ref.serialNumber, orientation = _ref.orientation;
+      if (__indexOf.call(placedCubes, serialNumber) >= 0) {
+        continue;
+      }
+      if (cubeObj == null) {
+        continue;
+      }
+      localTranslation = this.getLocalTranslationForFace(localFace);
+      globalPosition = this.getGlobalPositionUsingRelativePositioning(centerCubePosition, localRotation, localTranslation);
+      this.world.positionObj(serialNumber, globalPosition);
+      _results.push(placedCubes.push(serialNumber));
+    }
+    return _results;
+  };
+
+  CubeManager.prototype.getCubeNeighbors = function(startingCube) {
+    var localFace, neighbor, neighborObj, neighbors, _ref;
+    neighbors = [];
+    _ref = startingCube.neighbors;
+    for (localFace in _ref) {
+      neighborObj = _ref[localFace];
+      if (neighborObj != null) {
+        neighbor = {
+          'localFace': localFace,
+          'cubeObj': this.cubeDatabase[neighborObj.serialNumber],
+          'serialNumber': neighborObj.serialNumber,
+          'orientation': neighborObj.orientation
+        };
+        neighbors.push(neighbor);
+      }
+    }
+    return neighbors;
   };
 
   CubeManager.prototype.getCubeWithMostNeighbors = function(cubes) {

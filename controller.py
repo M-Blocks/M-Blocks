@@ -341,7 +341,7 @@ class Neighbors(object):
 # Main loop for running program via command line
 if __name__ == "__main__":
     cube1 = Cube(port=None, serialNumber='C1')
-    lonelyCube = Cube(port=None, serialNumber='Lon')
+    #lonelyCube = Cube(port=None, serialNumber='Lon')
     cube2 = Cube(port=None, serialNumber='C2')
     
     # Create a cube object with a neighbor on face 1

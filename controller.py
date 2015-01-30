@@ -340,17 +340,22 @@ class Neighbors(object):
 
 # Main loop for running program via command line
 if __name__ == "__main__":
-    cube1 = Cube(port=None, serialNumber='C1')
-    #lonelyCube = Cube(port=None, serialNumber='Lon')
-    cube2 = Cube(port=None, serialNumber='C2')
     
-    # Create a cube object with a neighbor on face 1
+    # Create a L stack of blocks
+    cube1 = Cube(port=None, serialNumber='C1')
     cube1.neighbors.setNeighbor('z+', 'C2', 0)
+    cube1.neighbors.setNeighbor('x+', 'C3', 0)
 
-    # Create a second cube object with no neighbors
-
-    # Create a third cube object with cube1 as a neighbor on face 3
+    cube2 = Cube(port=None, serialNumber='C2')
     cube2.neighbors.setNeighbor('z-', 'C1', 0)
+
+    cube3 = Cube(port=None, serialNumber='C3')
+    cube3.neighbors.setNeighbor('y-', 'C1', 0)
+    cube3.neighbors.setNeighbor('x-', 'C4', 0)
+
+    cube4 = Cube(port=None, serialNumber='C4')
+    cube4.neighbors.setNeighbor('y-', 'C3', 0)
+
 
    
 

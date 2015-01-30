@@ -99,6 +99,19 @@ class World
 		@render()
 
 
+	rotateObj: (objectName, rotation) =>
+		object = @scene.getObjectByName(objectName)
+		object.rotation.copy (rotation)
+		# Make a quaternion from euler rotation
+		# rotationQuaternion = new THREE.Quaternion()
+		# rotationQuaternion.setFromEuler(rotation)
+		# # Then, apply the quaternion
+		# object.quaternion.multiply(rotationQuaternion)
+
+		# refresh the scene
+		@render()
+
+
 
 
 module.exports = World

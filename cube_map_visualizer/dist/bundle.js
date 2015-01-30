@@ -1561,6 +1561,7 @@ var World,
 
 World = (function() {
   function World() {
+    this.rotateObj = __bind(this.rotateObj, this);
     this.positionObj = __bind(this.positionObj, this);
     this.removeObj = __bind(this.removeObj, this);
     this.addObj = __bind(this.addObj, this);
@@ -1640,6 +1641,13 @@ World = (function() {
     return this.render();
   };
 
+  World.prototype.rotateObj = function(objectName, rotation) {
+    var object;
+    object = this.scene.getObjectByName(objectName);
+    object.rotation.copy(rotation);
+    return this.render();
+  };
+
   return World;
 
 })();
@@ -1666,7 +1674,9 @@ CubeManager = (function() {
   function CubeManager() {
     this.getCubeWithMostNeighbors = __bind(this.getCubeWithMostNeighbors, this);
     this.getCubeNeighbors = __bind(this.getCubeNeighbors, this);
+    this.getMatedFace = __bind(this.getMatedFace, this);
     this.rearrangeCubes = __bind(this.rearrangeCubes, this);
+    this.getCube = __bind(this.getCube, this);
     this.makeNewCube = __bind(this.makeNewCube, this);
     this.update_cube_status = __bind(this.update_cube_status, this);
     this.cubeDatabase = {};
@@ -1685,23 +1695,54 @@ CubeManager = (function() {
   }
 
   CubeManager.prototype.getLocalTranslationForFace = function(face) {
-    switch (face) {
+    var translationVec;
+    translationVec = this.normal(face);
+    translationVec.multiplyScalar(Cube.size);
+    return translationVec;
+  };
+
+  CubeManager.prototype.normal = function(axis) {
+    switch (axis) {
       case 'x+':
-        return new THREE.Vector3(Cube.size, 0, 0);
+        return new THREE.Vector3(1, 0, 0);
       case 'x-':
-        return new THREE.Vector3(-Cube.size, 0, 0);
+        return new THREE.Vector3(-1, 0, 0);
       case 'y+':
-        return new THREE.Vector3(0, Cube.size, 0);
+        return new THREE.Vector3(0, 1, 0);
       case 'y-':
-        return new THREE.Vector3(0, -Cube.size, 0);
+        return new THREE.Vector3(0, -1, 0);
       case 'z+':
-        return new THREE.Vector3(0, 0, Cube.size);
+        return new THREE.Vector3(0, 0, 1);
       case 'z-':
-        return new THREE.Vector3(0, 0, -Cube.size);
+        return new THREE.Vector3(0, 0, -1);
       default:
-        console.error("ERROR: unrecognized face ", face, " used for translation.");
+        console.error("ERROR: unrecognized axis ", axis, " used for translation.");
         return new THREE.Vector3(0, 0, 0);
     }
+  };
+
+  CubeManager.prototype.getRotationForFaceMate = function(originFace, matedFace) {
+    var matedNormal, negatedMatedNormal, originNormal, rotationAxis, rotationEuler;
+    if ((originFace == null) || (matedFace == null)) {
+      console.error("Missing arguments to getRotationForFaceMate", originFace, matedFace);
+      return new THREE.Euler();
+    }
+    originNormal = this.normal(originFace);
+    matedNormal = this.normal(matedFace);
+    negatedMatedNormal = new THREE.Vector3();
+    negatedMatedNormal.copy(matedNormal).negate();
+    rotationAxis = new THREE.Vector3();
+    rotationEuler = new THREE.Euler();
+    if (originNormal.equals(matedNormal)) {
+
+    } else if (originNormal.equals(negatedMatedNormal)) {
+      rotationAxis.clone(originNormal).multiplyScalar(Math.PI);
+      rotationEuler.setFromVector3(rotationAxis);
+    } else {
+      rotationAxis.crossVectors(originNormal, matedNormal).multiplyScalar(Math.PI / 2);
+      rotationEuler.setFromVector3(rotationAxis);
+    }
+    return rotationEuler;
   };
 
   CubeManager.prototype.getGlobalPositionUsingRelativePositioning = function(originVec, rotationEuler, localTranslationVec) {
@@ -1744,8 +1785,12 @@ CubeManager = (function() {
     return cube;
   };
 
+  CubeManager.prototype.getCube = function(cubeSerialNumber) {
+    return this.cubeDatabase[cubeSerialNumber];
+  };
+
   CubeManager.prototype.rearrangeCubes = function(cubes, startingPosition) {
-    var centerCubePosition, cubeObj, globalPosition, localFace, localRotation, localTranslation, neighbors, orientation, originCube, placedCubes, serialNumber, _i, _len, _ref, _results;
+    var centerCube, cubeObj, cubesToTraverse, globalPosition, localFace, localTranslation, matedFace, matingRotation, neighbors, orientation, originCube, placedCubes, serialNumber, _results;
     if (startingPosition == null) {
       startingPosition = new THREE.Vector3();
     }
@@ -1754,25 +1799,47 @@ CubeManager = (function() {
       return;
     }
     originCube.Object3D.position.copy(startingPosition);
-    centerCubePosition = originCube.Object3D.position;
-    localRotation = new THREE.Euler(0, 0, 0, 'XYZ');
     placedCubes = [originCube.serialNumber];
-    neighbors = this.getCubeNeighbors(originCube);
+    cubesToTraverse = [originCube.serialNumber];
     _results = [];
-    for (_i = 0, _len = neighbors.length; _i < _len; _i++) {
-      _ref = neighbors[_i], cubeObj = _ref.cubeObj, localFace = _ref.localFace, serialNumber = _ref.serialNumber, orientation = _ref.orientation;
-      if (__indexOf.call(placedCubes, serialNumber) >= 0) {
-        continue;
-      }
-      if (cubeObj == null) {
-        continue;
-      }
-      localTranslation = this.getLocalTranslationForFace(localFace);
-      globalPosition = this.getGlobalPositionUsingRelativePositioning(centerCubePosition, localRotation, localTranslation);
-      this.world.positionObj(serialNumber, globalPosition);
-      _results.push(placedCubes.push(serialNumber));
+    while (cubesToTraverse.length > 0) {
+      centerCube = this.getCube(cubesToTraverse.pop());
+      neighbors = this.getCubeNeighbors(centerCube);
+      _results.push((function() {
+        var _i, _len, _ref, _results1;
+        _results1 = [];
+        for (_i = 0, _len = neighbors.length; _i < _len; _i++) {
+          _ref = neighbors[_i], cubeObj = _ref.cubeObj, localFace = _ref.localFace, serialNumber = _ref.serialNumber, orientation = _ref.orientation;
+          if (__indexOf.call(placedCubes, serialNumber) >= 0) {
+            continue;
+          }
+          localTranslation = this.getLocalTranslationForFace(localFace);
+          globalPosition = this.getGlobalPositionUsingRelativePositioning(centerCube.Object3D.position, centerCube.Object3D.rotation, localTranslation);
+          this.world.positionObj(serialNumber, globalPosition);
+          placedCubes.push(serialNumber);
+          cubesToTraverse.push(serialNumber);
+          matedFace = this.getMatedFace(centerCube.serialNumber, serialNumber);
+          matingRotation = this.getRotationForFaceMate(localFace, matedFace);
+          _results1.push(this.world.rotateObj(serialNumber, matingRotation));
+        }
+        return _results1;
+      }).call(this));
     }
     return _results;
+  };
+
+  CubeManager.prototype.getMatedFace = function(originSerialNumber, matedSerialNumber) {
+    var cubeObj, localFace, matedCube, neighbors, orientation, serialNumber, _i, _len, _ref;
+    matedCube = this.getCube(matedSerialNumber);
+    neighbors = this.getCubeNeighbors(matedCube);
+    for (_i = 0, _len = neighbors.length; _i < _len; _i++) {
+      _ref = neighbors[_i], cubeObj = _ref.cubeObj, localFace = _ref.localFace, serialNumber = _ref.serialNumber, orientation = _ref.orientation;
+      if (serialNumber === originSerialNumber) {
+        return localFace;
+      }
+    }
+    console.error("ERROR: cube " + originSerialNumber + " says that it is mated to " + matedSerialNumber + ". However, cube " + matedSerialNumber + " does not report that it is mated to " + originSerialNumber + ". Please check " + matedSerialNumber + " for bugs.");
+    return null;
   };
 
   CubeManager.prototype.getCubeNeighbors = function(startingCube) {
@@ -1788,7 +1855,9 @@ CubeManager = (function() {
           'serialNumber': neighborObj.serialNumber,
           'orientation': neighborObj.orientation
         };
-        neighbors.push(neighbor);
+        if (neighbor.cubeObj != null) {
+          neighbors.push(neighbor);
+        }
       }
     }
     return neighbors;

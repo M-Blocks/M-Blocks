@@ -28,23 +28,60 @@ class CubeManager
 	getLocalTranslationForFace: (face) ->
 		# Translation lookup table
 		#console.log "Translating cube origin by ", Cube.size, "in #{face} direction"
+		translationVec = @normal(face)
+		translationVec.multiplyScalar(Cube.size)
+		return translationVec
+		
 
-		switch face
+	normal: (axis) ->
+		switch axis
 			when 'x+'
-				return new THREE.Vector3(Cube.size, 0, 0)
+				return new THREE.Vector3(1, 0, 0)
 			when 'x-'
-				return new THREE.Vector3(-Cube.size, 0, 0)
+				return new THREE.Vector3(-1, 0, 0)
 			when 'y+'
-				return new THREE.Vector3(0, Cube.size, 0)
+				return new THREE.Vector3(0, 1, 0)
 			when 'y-'
-				return new THREE.Vector3(0, -Cube.size, 0)
+				return new THREE.Vector3(0, -1, 0)
 			when 'z+'
-				return new THREE.Vector3(0, 0, Cube.size)
+				return new THREE.Vector3(0, 0, 1)
 			when 'z-'
-				return new THREE.Vector3(0, 0, -Cube.size)
+				return new THREE.Vector3(0, 0, -1)
 			else
-				console.error "ERROR: unrecognized face ", face, " used for translation."
+				console.error "ERROR: unrecognized axis ", axis, " used for translation."
 				return new THREE.Vector3(0, 0, 0)
+
+	getRotationForFaceMate: (originFace, matedFace) ->
+		# Check that our args are okay
+		if not originFace? or not matedFace?
+			console.error "Missing arguments to getRotationForFaceMate", originFace, matedFace
+			return new THREE.Euler()
+
+		originNormal = @normal(originFace)
+		matedNormal = @normal(matedFace)
+		# For manual checking of aligned and inverse cases
+		negatedMatedNormal = new THREE.Vector3()
+		negatedMatedNormal.copy(matedNormal).negate()
+
+		rotationAxis = new THREE.Vector3()
+		rotationEuler = new THREE.Euler()
+
+
+		# Check to see if the normals are the same or inverses
+		if originNormal.equals(matedNormal)
+			# No rotation needed
+
+		# Rotate the cube 180 if the opposite face needs to be mated
+		else if originNormal.equals(negatedMatedNormal)
+			rotationAxis.clone(originNormal).multiplyScalar(Math.PI)
+			rotationEuler.setFromVector3(rotationAxis)
+
+		else
+		# normal(matedFace) x normal(origin face) will give an axis of rotation where a 90deg rotation will align the origin face to that of the mated face
+			rotationAxis.crossVectors(originNormal, matedNormal).multiplyScalar(Math.PI/2)
+			rotationEuler.setFromVector3(rotationAxis)
+
+		return rotationEuler
 
 	getGlobalPositionUsingRelativePositioning: (originVec, rotationEuler, localTranslationVec) ->
 		# Rotate the translation vector so that the local translation is local to the origin cube
@@ -94,6 +131,9 @@ class CubeManager
 
 		return cube
 
+	getCube: (cubeSerialNumber) =>
+		return @cubeDatabase[cubeSerialNumber]
+
 	rearrangeCubes: (cubes, startingPosition = new THREE.Vector3()) =>
 		# Let's grab the cube with the most neighbors. This will be our origin cube.
 		originCube = @getCubeWithMostNeighbors(cubes)
@@ -104,35 +144,56 @@ class CubeManager
 		originCube.Object3D.position.copy( startingPosition )
 
 		# Now, find and place all of the origin cube's neighbors
-		centerCubePosition = originCube.Object3D.position
-		localRotation = new THREE.Euler( 0,0,0, 'XYZ' )
 		placedCubes = [originCube.serialNumber]
+		cubesToTraverse = [originCube.serialNumber]
+		
+		# traverse the cube block
+		while cubesToTraverse.length > 0
+			centerCube = @getCube(cubesToTraverse.pop())
+			# Get the cube's neighbors
+			neighbors = @getCubeNeighbors(centerCube)
 
-		# Get the cube's neighbors
-		neighbors = @getCubeNeighbors(originCube)
+			for {cubeObj, localFace, serialNumber, orientation} in neighbors
+				# Place the origin cube's neighbors
+
+				# Check that we have not placed this cube before
+				if serialNumber in placedCubes
+					# Skip this iteration of the loop
+					continue
+
+				# Find the local translation vector of the cube about to be placed
+				localTranslation = @getLocalTranslationForFace(localFace)
+				# Find the global position of the new cube
+				globalPosition = @getGlobalPositionUsingRelativePositioning(centerCube.Object3D.position, centerCube.Object3D.rotation, localTranslation)
+
+				# Set the new global position of the cube
+				@world.positionObj(serialNumber, globalPosition)
+
+				# Now, save this cube's serial number so that we do not try to place it again.
+				placedCubes.push(serialNumber)
+				# We should traverse this cube's neighbors sometime in the future
+				cubesToTraverse.push(serialNumber)
+
+				# Now, find the rotation needed on the neighboring cube for mating the two faces
+				matedFace = @getMatedFace(centerCube.serialNumber, serialNumber)
+				matingRotation = @getRotationForFaceMate(localFace, matedFace)
+				# Rotate the neighboring cube to mate the correct faces
+				@world.rotateObj(serialNumber, matingRotation)
+
+
+				#console.log "Placing neighbor #{serialNumber} next to #{originCube.serialNumber} at pos", globalPosition 
+
+	getMatedFace: (originSerialNumber, matedSerialNumber) =>
+		matedCube = @getCube(matedSerialNumber)
+
+		# Look for the origin serial number in matedCube.neighbors
+		neighbors = @getCubeNeighbors(matedCube)
 		for {cubeObj, localFace, serialNumber, orientation} in neighbors
-			# Place the origin cube's neighbors
-
-			# Check that we have not placed this cube before
-			if serialNumber in placedCubes
-				# Skip this iteration of the loop
-				continue
-
-			# Check that the neighboring cube exists in our world
-			if not cubeObj?
-				# Skip this iteration of the loop
-				continue
-
-			# Find the local translation vector of the cube about to be placed
-			localTranslation = @getLocalTranslationForFace(localFace)
-			# Find the global position of the new cube
-			globalPosition = @getGlobalPositionUsingRelativePositioning(centerCubePosition, localRotation, localTranslation)
-
-			# Set the new global position of the cube
-			@world.positionObj(serialNumber, globalPosition)
-			# Now, save this cube's serial number so that we do not try to place it again.
-			placedCubes.push(serialNumber)
-			#console.log "Placing neighbor #{serialNumber} next to #{originCube.serialNumber} at pos", globalPosition 
+			if serialNumber is originSerialNumber
+				return localFace
+		# If we get here, then the mated cube has failed to tell the visualizer that it is mated to another cube
+		console.error "ERROR: cube #{originSerialNumber} says that it is mated to #{matedSerialNumber}. However, cube #{matedSerialNumber} does not report that it is mated to #{originSerialNumber}. Please check #{matedSerialNumber} for bugs."
+		return null
 
 		
 	getCubeNeighbors: (startingCube) =>
@@ -147,7 +208,9 @@ class CubeManager
 					'serialNumber': neighborObj.serialNumber
 					'orientation': neighborObj.orientation
 
-				neighbors.push(neighbor)
+				# Check that the neighboring cube exists in our world before pushing
+				if neighbor.cubeObj?
+					neighbors.push(neighbor)
 
 		#console.log "Neighbors of #{startingCube.serialNumber}: ", neighbors
 		return neighbors

@@ -51,7 +51,7 @@ class CubeManager
 				console.error "ERROR: unrecognized axis ", axis, " used for translation."
 				return new THREE.Vector3(0, 0, 0)
 
-	getRotationForFaceMate: (originFace, matedFace) ->
+	getRotationForFaceMate: (originFace, matedFace, startingQuaternion) ->
 		# Check that our args are okay
 		if not originFace? or not matedFace?
 			console.error "Missing arguments to getRotationForFaceMate", originFace, matedFace
@@ -81,7 +81,14 @@ class CubeManager
 			rotationAxis.crossVectors(originNormal, matedNormal).multiplyScalar(Math.PI/2)
 			rotationEuler.setFromVector3(rotationAxis)
 
-		return rotationEuler
+
+		# Compute the new rotation of the cube using the centercube's starting rotation
+		rotationQuaternion = new THREE.Quaternion()
+		rotationQuaternion.copy(startingQuaternion)
+		rotationQuaternion.setFromEuler(rotationEuler)
+		rotationQuaternion.multiply(startingQuaternion)
+
+		return rotationQuaternion
 
 	getGlobalPositionUsingRelativePositioning: (originVec, rotationEuler, localTranslationVec) ->
 		# Rotate the translation vector so that the local translation is local to the origin cube
@@ -176,7 +183,7 @@ class CubeManager
 
 				# Now, find the rotation needed on the neighboring cube for mating the two faces
 				matedFace = @getMatedFace(centerCube.serialNumber, serialNumber)
-				matingRotation = @getRotationForFaceMate(localFace, matedFace)
+				matingRotation = @getRotationForFaceMate(localFace, matedFace, centerCube.Object3D.quaternion)
 				# Rotate the neighboring cube to mate the correct faces
 				@world.rotateObj(serialNumber, matingRotation)
 

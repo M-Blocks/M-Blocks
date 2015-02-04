@@ -101,12 +101,12 @@ class World
 
 	rotateObj: (objectName, rotation) =>
 		object = @scene.getObjectByName(objectName)
-		object.rotation.copy (rotation)
-		# Make a quaternion from euler rotation
-		# rotationQuaternion = new THREE.Quaternion()
-		# rotationQuaternion.setFromEuler(rotation)
-		# # Then, apply the quaternion
-		# object.quaternion.multiply(rotationQuaternion)
+		
+		# Euler based
+		# object.rotation.copy (rotation)
+
+		# Quaternion based
+		object.quaternion.copy(rotation)
 
 		# refresh the scene
 		@render()

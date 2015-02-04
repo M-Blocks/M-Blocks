@@ -1644,7 +1644,7 @@ World = (function() {
   World.prototype.rotateObj = function(objectName, rotation) {
     var object;
     object = this.scene.getObjectByName(objectName);
-    object.rotation.copy(rotation);
+    object.quaternion.copy(rotation);
     return this.render();
   };
 
@@ -1721,8 +1721,8 @@ CubeManager = (function() {
     }
   };
 
-  CubeManager.prototype.getRotationForFaceMate = function(originFace, matedFace) {
-    var matedNormal, negatedMatedNormal, originNormal, rotationAxis, rotationEuler;
+  CubeManager.prototype.getRotationForFaceMate = function(originFace, matedFace, startingQuaternion) {
+    var matedNormal, negatedMatedNormal, originNormal, rotationAxis, rotationEuler, rotationQuaternion;
     if ((originFace == null) || (matedFace == null)) {
       console.error("Missing arguments to getRotationForFaceMate", originFace, matedFace);
       return new THREE.Euler();
@@ -1742,7 +1742,11 @@ CubeManager = (function() {
       rotationAxis.crossVectors(originNormal, matedNormal).multiplyScalar(Math.PI / 2);
       rotationEuler.setFromVector3(rotationAxis);
     }
-    return rotationEuler;
+    rotationQuaternion = new THREE.Quaternion();
+    rotationQuaternion.copy(startingQuaternion);
+    rotationQuaternion.setFromEuler(rotationEuler);
+    rotationQuaternion.multiply(startingQuaternion);
+    return rotationQuaternion;
   };
 
   CubeManager.prototype.getGlobalPositionUsingRelativePositioning = function(originVec, rotationEuler, localTranslationVec) {
@@ -1819,7 +1823,7 @@ CubeManager = (function() {
           placedCubes.push(serialNumber);
           cubesToTraverse.push(serialNumber);
           matedFace = this.getMatedFace(centerCube.serialNumber, serialNumber);
-          matingRotation = this.getRotationForFaceMate(localFace, matedFace);
+          matingRotation = this.getRotationForFaceMate(localFace, matedFace, centerCube.Object3D.quaternion);
           _results1.push(this.world.rotateObj(serialNumber, matingRotation));
         }
         return _results1;

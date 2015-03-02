@@ -1,11 +1,13 @@
 from itertools import izip
 
+import csv
 import math
+import os
+import random
 import serial
 import time
 
 import utils
-import gui
 
 class Cube(object):
     def __init__(self, port, baud=115200):
@@ -19,6 +21,17 @@ class Cube(object):
         self.ser = serial.Serial(port, baud, timeout=1)
         self.ser.write('atd\n')
 
+        # Get MAC address of cube (unique)
+        line = ''
+        while True:
+            try:
+                line = self.ser.readline()
+                if 'CONN' == line[:4]:
+                    break
+            except serial.serialutil.SerialException:
+                pass
+        self.mac_address = line.split()[1]
+
         self.orientation = 0
         self.reverse = False
 
@@ -30,6 +43,42 @@ class Cube(object):
         # Forward is the along the positive x-axis
         self.direction = [1, 0]
 
+        self.__calibrate = {}
+        self.read_calibration()
+
+    def _move(self, direction, rpm, br, t):
+        """Move cube in specified direction.
+
+        :param direction: One of {left, right, forward, backward, up,
+            down}; case insensitive.
+        """
+        # TODO: Only moves it along the xy-plane
+
+        forward = 'ia f {0} {1} {2}\n'.format(rpm, br, t)
+        reverse = 'ia r {0} {1} {2}\n'.format(rpm, br, t)
+
+        if direction not in ('forward', 'backward'):
+            self.change_plane(direction)
+
+        if self.reverse:
+            forward, reverse = reverse, forward
+            if direction is 'backward':
+                forward, reverse = reverse, forward
+
+        self.get_orientation()
+        before = self.orientation
+
+        self.ser.write(forward)
+        time.sleep(5)
+
+        self.get_orientation()
+        after = self.orientation
+
+        if before != after:
+            return True
+        else:
+            return False
+
     def disconnect(self):
         """Disconnect a serial connection.
 
@@ -40,25 +89,6 @@ class Cube(object):
             self.ser.open()
         self.ser.write('blediscon\n')
         self.ser.close()
-
-    def command(self, commands, sleep_dur):
-        """Send each serial in serials a sequence of commands.
-
-        :param serials: List of serial connectors.
-        :type serials: list of serial.Serial.
-        :param commands: List of commands to execute sequentially.
-        :type commands: list of str.
-        :param sleep_dur: Time to sleep between consecutive commands.
-        :type sleep_dur: list of int.
-        """
-        for c, t in izip(commands, sleep_dur + [0]):
-            if not self.ser.isOpen():
-                self.ser.open()
-            self.ser.write(c)
-            self.ser.write('\n')
-            self.ser.close()
-
-            time.sleep(t)
 
     def get_orientation(self):
         """Determine orientation of cube.
@@ -143,29 +173,29 @@ class Cube(object):
         print 'Final: {0} (tries: {1})'.format(self.orientation,
                 try_num)
 
-    def move(self, direction):
-        """Move cube in specified direction.
+    def do_action(self, action, direction):
+        """ Perform an action in a specified direction.
 
-        :param direction: One of {left, right, forward, backward, up,
-            down}; case insensitive.
+        Reads from the configuration map.
+
+        :param action: Action the cube will take.
+        :param direction: Direction to move in.
         """
-        # TODO: Only moves it along the xy-plane
+        rpm, br, t = self.__calibrate[action, direction]
+        if direction == 'forward':
+            d = 'f'
+        else:
+            d = 'r'
 
-        forward = 'ia f 5000 2000 250\n'
-        reverse = 'ia r 5000 1500 250\n'
-
-        if direction not in ('forward', 'backward'):
-            self.change_plane(direction)
-
-        if self.reverse:
-            forward, reverse = reverse, forward
-        if direction is 'backward':
-            forward, reverse = reverse, forward
-
-        self.ser.write(forward)
+        self.ser.write('ia {0} {1} {2} {3}\n'.format(d, rpm, br, t))
         time.sleep(5)
 
     def lattice_planner(self, state, goal):
+        """ Move from current position to goal position on a regular lattice.
+
+        :param state: Current state of the system.
+        :param goal: Goal position.
+        """
         while state != goal:
             dx, dy = (goal[i] - state[i] for i in range(2))
             dirx, diry = self.direction
@@ -176,9 +206,9 @@ class Cube(object):
                 state[0] += sgnx
                 print 'State: {0}'.format(state)
                 if dirx == sgnx:
-                    self.move('forward')
+                    self.do_action('traverse', 'forward')
                 elif dirx != 0 and dirx != sgnx:
-                    self.move('backward')
+                    self.do_action('traverse', 'backward')
                 elif dirx == 0:
                     self.change_plane('left')
                     state[0] -= sgnx
@@ -187,9 +217,9 @@ class Cube(object):
                 state[1] += sgny
                 print 'State: {0}'.format(state)
                 if diry == sgny:
-                    self.move('forward')
+                    self.do_action('traverse', 'forward')
                 elif diry != 0 and diry != sgny:
-                    self.move('backward')
+                    self.do_action('traverse', 'backward')
                 elif diry == 0:
                     self.change_plane('left')
                     state[1] -= sgny
@@ -212,13 +242,67 @@ class Cube(object):
         """
         while not good_enough(state, goal):
             direction = stimulus(state, goal)
-            self.move(direction)
+            self.do_action('traverse', direction)
             state = update(state, direction)
 
-    def gui(self):
-        root = Tk()
+    def calibrate(self, action, direction='forward'):
+        """ Calibrate parameters for IA.
 
-        app = App(root, self)
+        :param action: Action the block will take (see Table 2)
+        :param direction: Direction the action is taken in (forward or reverse)
 
-        root.mainloop()
-        root.destroy()
+        TODO: Make this task based
+        """
+        valid_dirs = ['forward', 'backward']
+        valid_acts = ['traverse', 'horizontal_traverse', 'vertical_traverse',
+                      'horizontal_convex', 'vertical_convex',
+                      'horizontal_concave', 'vertical_concave',
+                      'corner_climb', 'stair_step']
+
+        if direction not in valid_dirs:
+            raise ValueError('Invalid direction: {0}'.format(direction))
+        if action not in valid_acts:
+            raise ValueError('Invalid action: {0}'.format(action))
+
+        t = 250
+        min_rpm, max_rpm = 1000, 15000
+        min_br, max_br = 500, 5000
+
+        for rpm in xrange(min_rpm, max_rpm, 500):
+            for br in xrange(min_br, max_br, 500):
+                print rpm, br
+                if self._move(direction, rpm, br, t):
+                    print "Success!"
+                    # Attempt same command 3 more times
+                    for i in xrange(3):
+                        if not self._move(direction, rpm, br, t):
+                            break
+                    else:
+                        self.__calibrate[action, direction] = (rpm,
+                                                               br,
+                                                               t)
+                        return
+
+    def write_calibration(self):
+        """ Write calibration to a file.
+
+        The filename is the same as the MAC address of the cube.
+        """
+        filename = self.mac_address.replace(":", "")
+        with open(filename, 'wb') as f:
+            for k, v in self.__calibrate.items():
+                f.write('{0},{1},{2},{3},{4}\n'.format(k, *v))
+
+    def read_calibration(self):
+        """ Read calibration from file.
+
+        The filename is the same as the MAC address of the cube.
+        If the file is not found, nothing happens.
+        """
+        filename = self.mac_address.replace(":", "")
+        if os.path.isfile("./" + filename):
+            with open(filename, 'rb') as f:
+                csvreader = csv.reader(f, delimiter=',')
+                for row in csvreader:
+                    self.__calibrate[row[0],row[1]] = row[2:]
+        print self.__calibrate

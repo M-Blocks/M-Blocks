@@ -31,13 +31,36 @@ class App:
         self.cube = cube
 
     def move_forward(self):
-        self.cube.move('forward')
+        dirs = self._get_direction()
+        self.cube.move(dirs['forward'])
 
     def move_backward(self):
-        self.cube.move('backward')
+        dirs = self._get_direction()
+        self.cube.move(dirs['backward'])
 
     def move_left(self):
-        self.cube.move('left')
+        dirs = self._get_direction()
+        self.cube.move(dirs['left'])
 
     def move_right(self):
-        self.cube.move('right')
+        dirs = self._get_direction()
+        self.cube.move(dirs['right'])
+
+    def _get_direction(self):
+        orientation = self.cube.direction
+        dirs = {}
+
+        if orientation[0] == 1:
+            dirs = {'forward': 'forward', 'backward': 'backward',
+                    'left': 'left', 'right': 'right'}
+        elif orientation[0] == -1:
+            dirs = {'forward': 'backward', 'backward': 'forward',
+                    'left': 'right', 'right': 'left'}
+        elif orientation[1] == 1:
+            dirs = {'forward': 'right', 'backward': 'left',
+                    'left': 'forward', 'right': 'backward'}
+        elif orientation[1] == -1:
+            dirs = {'forward': 'left', 'backward': 'right',
+                    'left': 'backward', 'right': 'forward'}
+
+        return dirs

@@ -187,71 +187,16 @@ class Cube(object):
         else:
             d = 'r'
 
-        self.ser.write('ia {0} {1} {2} {3}\n'.format(d, rpm, br, t))
+        self.ser.write('bldcspeed {0} {1}\n'.format(d, rpm))
         time.sleep(5)
-
-    def lattice_planner(self, state, goal):
-        """ Move from current position to goal position on a regular lattice.
-
-        :param state: Current state of the system.
-        :param goal: Goal position.
-        """
-        while state != goal:
-            dx, dy = (goal[i] - state[i] for i in range(2))
-            dirx, diry = self.direction
-
-            sgnx = utils.sgn(dx)
-            sgny = utils.sgn(dy)
-            if dx != 0:
-                state[0] += sgnx
-                print 'State: {0}'.format(state)
-                if dirx == sgnx:
-                    self.do_action('traverse', 'forward')
-                elif dirx != 0 and dirx != sgnx:
-                    self.do_action('traverse', 'backward')
-                elif dirx == 0:
-                    self.change_plane('left')
-                    state[0] -= sgnx
-
-            elif dy != 0:
-                state[1] += sgny
-                print 'State: {0}'.format(state)
-                if diry == sgny:
-                    self.do_action('traverse', 'forward')
-                elif diry != 0 and diry != sgny:
-                    self.do_action('traverse', 'backward')
-                elif diry == 0:
-                    self.change_plane('left')
-                    state[1] -= sgny
-
-    def plan(self, state, goal, stimulus, update, good_enough):
-        """Plan a trajectory for the robot to move from the current
-        state to the goal under a given stimulus function.
-
-        Example: move from the current position towards a light source
-        until the light stimulus is over a threshold (the goal).
-
-        :param state: Current state of the robot.
-        :param goal: Goal state of the robot.
-        :param stimulus: Stimulus function that gives an updated state
-            after the robot moves.
-        :param update: Update the state to the new state of the
-            system.
-        :param good_enough: Function that returns True if the current
-            state is close enough to the goal.
-        """
-        while not good_enough(state, goal):
-            direction = stimulus(state, goal)
-            self.do_action('traverse', direction)
-            state = update(state, direction)
+        self.ser.write('brake {0} {1} {2}\n'.format(d, br, t))
+        time.sleep(5)
 
     def calibrate(self, action, direction='forward'):
         """ Calibrate parameters for IA.
 
         :param action: Action the block will take (see Table 2)
         :param direction: Direction the action is taken in (forward or reverse)
-
-        TODO: Make this task based
         """
         valid_dirs = ['forward', 'backward']
         valid_acts = ['traverse', 'horizontal_traverse', 'vertical_traverse',
@@ -305,4 +250,3 @@ class Cube(object):
                 csvreader = csv.reader(f, delimiter=',')
                 for row in csvreader:
                     self.__calibrate[row[0],row[1]] = row[2:]
-        print self.__calibrate

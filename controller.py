@@ -62,8 +62,8 @@ class Cube(object):
 
         if self.reverse:
             forward, reverse = reverse, forward
-            if direction is 'backward':
-                forward, reverse = reverse, forward
+        if direction is 'backward':
+            forward, reverse = reverse, forward
 
         self.get_orientation()
         before = self.orientation
@@ -209,9 +209,9 @@ class Cube(object):
         if action not in valid_acts:
             raise ValueError('Invalid action: {0}'.format(action))
 
-        t = 250
-        min_rpm, max_rpm = 1000, 15000
-        min_br, max_br = 500, 5000
+        t = 30
+        min_rpm, max_rpm = 4500, 15000
+        min_br, max_br = 1500, 3000
 
         for rpm in xrange(min_rpm, max_rpm, 500):
             for br in xrange(min_br, max_br, 500):
@@ -234,9 +234,9 @@ class Cube(object):
         The filename is the same as the MAC address of the cube.
         """
         filename = self.mac_address.replace(":", "")
-        with open(filename, 'wb') as f:
+        with open(filename, 'a') as f:
             for k, v in self.__calibrate.items():
-                f.write('{0},{1},{2},{3},{4}\n'.format(k, *v))
+                f.write('{0},{1},{2},{3},{4}\n'.format(k[0], k[1], *v))
 
     def read_calibration(self):
         """ Read calibration from file.

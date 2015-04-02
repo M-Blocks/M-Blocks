@@ -33,6 +33,7 @@ class Planner:
     def solve(self):
         for move, cube in self.moves:
             dx, dy, dz = (move[1][i] - move[0][i] for i in range(3))
+            print move, cube
 
     def _line_parser(self, line):
         elems = line.split(';')
@@ -47,7 +48,9 @@ class Planner:
         return result
 
 if __name__ == '__main__':
-    planner = Planner(['cube_1', 'cube_2', 'cube_3', 'cube_4'],
-                      [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)])
+    planner = Planner(['cube_1', 'cube_2', 'cube_3', 'cube_4',
+                       'cube_5', 'cube_6', 'cube_7', 'cube_8'],
+                      [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0),
+                       (0, 0, 1), (0, 1, 1), (1, 0, 1), (1, 1, 1)])
     planner.flatten()
     planner.solve()

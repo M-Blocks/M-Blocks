@@ -1,6 +1,6 @@
 import networkx as nx
 
-class Configuration:
+class Config:
     dx = [1, -1, 0, 0, 0, 0]
     dy = [0, 0, 1, -1, 0, 0]
     dz = [0, 0, 0, 0, 1, -1]
@@ -13,7 +13,10 @@ class Configuration:
         # Build the underlying graph
         self._graph = nx.Graph()
         self._graph.add_nodes_from(self._cubes)
-        print self._graph
+        for cube in cubes:
+            for neighbor in zip(Config.dx, Config.dy, Config.dz):
+                if neighbor in cubes:
+                    self._graph.add_edge(cube, neighbor)
 
     def _boundary(self):
         # doesn't matter which extreme
@@ -23,6 +26,7 @@ class Configuration:
         boundary = set()
         marcher = self._rotate(starting_position, (0, 0, -1))
         while marcher != starting_position:
+            # TODO: update position
             boundary.update(self._neighbors(marcher))
 
         return boundary
@@ -42,14 +46,14 @@ class Configuration:
         return (x, y, z)
 
     def _is_connected(self):
-        return self._graph.is_connected()
+        return nx.is_connected(self._graph)
 
     def _neighbors(self, cube):
         if cube in self._graph.nodes():
-            return self._graph.all_neighbors(cube)
+            return self._graph.neighbors(cube)
 
         result = []
-        for position in zip(dx, dy, dz):
+        for position in zip(Config.dx, Config.dy, Config.dz):
             if position in self._graph.nodes():
                 result.append(position)
         return result

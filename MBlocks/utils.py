@@ -1,3 +1,4 @@
+import collections
 import math
 import numpy as np
 import sys
@@ -11,6 +12,26 @@ def sgn(x):
         return 1
     else:
         return 0
+
+def add(v1, v2):
+    """Add two vectors together: v1 + v2
+    """
+    return tuple(a + b for a, b in zip(v1, v2))
+
+def sub(v1, v2):
+    """Subtract two vectors: v1 - v2
+    """
+    return tuple(a - b for a, b in zip(v1, v2))
+
+def mult(v, a):
+    """Multiply a vector by a scalar: a * v
+    """
+    return tuple(a * x for x in v)
+
+def circshift(v, i):
+    """Circular shift of vector
+    """
+    return tuple(v[(i + j) % len(v)] for j in range(len(v)))
 
 def dot(v1, v2):
     """Return the dot product between two vectors.
@@ -36,37 +57,9 @@ def rotate(v, theta):
     """Rotate vector v by theta degrees.
     """
     rot = np.array([[np.cos(theta), np.sin(theta)],
-                       [-np.sin(theta), np.cos(theta)]])
+                    [-np.sin(theta), np.cos(theta)]])
     vec = np.array(v)
     res = dot(rot, vec)
-    print res
     res[np.absolute(res) < 1e-8] = 0
-    print res
 
     return res.tolist()
-
-
-def query_yes_no(question, default="yes"):
-    """ Ask a yes/no question and return True/False. """
-    valid = {"yes": True, "y": True, "ye": True,
-             "no": False, "n": False}
-
-    if default is None:
-        prompt = " [y/n]: "
-    elif default == "yes":
-        prompt = " [Y/n]: "
-    elif default == "no":
-        prompt = " [y/N]: "
-    else:
-        raise ValueError("invalid default answer: '%s'" % default)
-
-    while True:
-        sys.stdout.write(question + prompt)
-        choice = raw_input().lower()
-        if default is not None and choice == '':
-            return valid[default]
-        elif choice in valid:
-            return valid[choice]
-        else:
-            sys.stdout.write("Please respond with 'yes' or 'no' "
-                             "(or 'y' or 'n').\n")

@@ -1,6 +1,7 @@
 from MBlocks import utils
 
 import itertools
+import random
 from collections import deque
 from operator import mul
 
@@ -137,6 +138,9 @@ class Config:
 
         return (x, y, z)
 
+    def _remove_cube(self, cube):
+        self._graph.remove_node(cube)
+        
     def _has_cube(self, cube):
         """Returns true if cube is in the configuration.
         """
@@ -171,5 +175,82 @@ class Config:
                 result.append(new_pos)
         return result
 
+    def _move_to_tail(self, cube, tail, extend):
+        self._remove_cube(cube)
+
+        intermediate = []
+        final_position = utils.add(tail, extend)
+        while cube != final_position:
+            intermediate.append(cube)
+            cube = self._rotate(cube, (0, 0, -1))
+        intermediate.append(cube)
+
+        # TODO: Add final position back into the configuration
+        return intermediate, final_position
+
+    def _rotate(self, c0, direction):
+        axis = 0
+        posneg = direction[axis]
+        while posneg == 0:
+            axis = axis + 1
+            posneg = direction[axis]
+            
+        c1_c3_wrapped_coords = [((0,0,+posneg),(0,+1,0)),
+                                ((0,+1,0),(0,0,-posneg)),
+                                ((0,0,-posneg),(0,-1,0)),
+                                ((0,-1,0),(0,0,+posneg))]
+        
+        for (i, j) in c1_c3_wrapped_coords:
+            #    c6 c7
+            # c4 c3 c2
+            # c5 c0 c1
+            # c9 c8
+            i = utils.circshift(i, -axis)
+            j = utils.circshift(j, -axis)
+            c1 = utils.add(i, c0)
+            c3 = utils.add(j, c0)
+            c2 = utils.add(utils.add(i, j), c0)                  #(c1[0]+c3[0], c1[1]+c3[1])
+            c6 = utils.add(utils.mult(j, 2), c0)                 #(2*c3[0], 2*c3[1])
+            c7 = utils.add(utils.add(i, utils.mult(j, 2)), c0)   #(c1[0]+2*c3[0], c1[1]+2*c3[1])
+            c5 = utils.add(utils.mult(i, -1), c0)                #(-c1[0], -c1[1])
+            c4 = utils.add(utils.add(j, utils.mult(i, -1)), c0)  #(c3[0]-c1[0], c3[1]-c1[1])
+            c8 = utils.add(utils.mult(j, -1), c0)
+            c9 = utils.add(utils.add(utils.mult(i, -1), utils.mult(j, -1)), c0)
+
+            if not self._has_cube(c1):
+                continue
+            if self._has_cube(c3):
+                continue
+            if self._has_cube(c5):
+                continue
+
+            # Transfer Move
+            if self._has_cube(c4):
+                return c5
+            # Linear Move
+            elif self._has_cube(c2):
+                return c3
+            # Transfer Move
+            elif self._has_cube(c6) or self._has_cube(c7) :
+                return c3
+            # Corner Move
+            else:
+                return c2
+        return c0
+        
     def flatten(self):
-        pass
+        tail = [self._extreme(min, min, min)]
+        extend = (0, -1, 0)
+        non_splitting = self._non_splitting() - set(tail)
+
+        moves = []
+        while non_splitting:
+            cube = random.sample(non_splitting, 1)[0]
+            move, tail_cube = self._move_to_tail(cube, tail[-1], extend)
+            
+            print(move, self._graph.nodes())
+            tail.append(tail_cube)
+            moves.append(move)
+            non_splitting = self._non_splitting() - set(tail)
+
+        return moves

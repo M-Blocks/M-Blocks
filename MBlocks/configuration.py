@@ -138,6 +138,11 @@ class Config:
 
         return (x, y, z)
 
+    def _add_cube(self, cube, neighbors):
+        self._graph.add_node(cube)
+        for neighbor in neighbors:
+            self._graph.add_edge(cube, neighbor)
+            
     def _remove_cube(self, cube):
         self._graph.remove_node(cube)
         
@@ -184,8 +189,8 @@ class Config:
             intermediate.append(cube)
             cube = self._rotate(cube, (0, 0, -1))
         intermediate.append(cube)
+        self._add_cube(final_position, [tail])
 
-        # TODO: Add final position back into the configuration
         return intermediate, final_position
 
     def _rotate(self, c0, direction):
@@ -248,7 +253,6 @@ class Config:
             cube = random.sample(non_splitting, 1)[0]
             move, tail_cube = self._move_to_tail(cube, tail[-1], extend)
             
-            print(move, self._graph.nodes())
             tail.append(tail_cube)
             moves.append(move)
             non_splitting = self._non_splitting() - set(tail)

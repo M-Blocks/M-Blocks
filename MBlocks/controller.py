@@ -10,6 +10,16 @@ import time
 import utils
 
 class Cube(object):
+    TRAVERSE = 'traverse'
+    HORIZONTAL_TRAVERSE = 'horizontal_traverse'
+    VERTICAL_TRAVERSE = 'vertical_traverse'
+    HORIZONTAL_CONVEX = 'horizontal_convex'
+    VERTICAL_CONVEX = 'vertical_convex'
+    HORIZONTAL_CONCAVE = 'horizontal_concave'
+    VERTICAL_CONCAVE = 'vertical_concave'
+    CORNER_CLIMB = 'corner_climb'
+    STAIR_STEP = 'stair_step'
+
     def __init__(self, port, baud=115200):
         """Connect to a serial port at a given baud rate.
 
@@ -46,13 +56,20 @@ class Cube(object):
         self.__calibrate = {}
         self.read_calibration()
 
-    def _move(self, direction, rpm, br, t):
+    def move(self, direction, rpm=None, br=None, t=None):
         """Move cube in specified direction.
+
+        Note that this only works for traversal moves.
 
         :param direction: One of {left, right, forward, backward, up,
             down}; case insensitive.
         """
-        # TODO: Only moves it along the xy-plane
+        if rpm is None:
+            rpm = self.__calibrate(Cube.TRAVERSE, 'forward')[0]
+        if br is None:
+            br = self.__calibrate(Cube.TRAVERSE, 'forward')[1]
+        if t is None:
+            t = self.__calibrate(Cube.TRAVERSE, 'forward')[2]
 
         forward = 'ia f {0} {1} {2}\n'.format(rpm, br, t)
         reverse = 'ia r {0} {1} {2}\n'.format(rpm, br, t)
@@ -173,24 +190,46 @@ class Cube(object):
         print 'Final: {0} (tries: {1})'.format(self.orientation,
                 try_num)
 
-    def do_action(self, action, direction):
-        """ Perform an action in a specified direction.
+    def lattice_planner(self, state, goal):
+        while state != goal:
+            dx, dy = (goal[i] - state[i] for i in range(2))
+            dirx, diry = self.direction
 
-        Reads from the configuration map.
+            previous_orientation = self.orientation
 
-        :param action: Action the cube will take.
-        :param direction: Direction to move in.
-        """
-        rpm, br, t = self.__calibrate[action, direction]
-        if direction == 'forward':
-            d = 'f'
-        else:
-            d = 'r'
+            sgnx = utils.sgn(dx)
+            sgny = utils.sgn(dy)
+            if dx != 0:
+                state[0] += sgnx
+                print 'State: {0}'.format(state)
+                if dirx == sgnx:
+                    self.move('forward', 5000, 2000, 20)
+                elif dirx != 0 and dirx != sgnx:
+                    self.move('backward', 5000, 2000, 20)
+                elif dirx == 0:
+                    self.change_plane('left')
+                    state[0] -= sgnx
 
-        self.ser.write('bldcspeed {0} {1}\n'.format(d, rpm))
-        time.sleep(5)
-        self.ser.write('brake {0} {1} {2}\n'.format(d, br, t))
-        time.sleep(5)
+                self.get_orientation()
+                if self.orientation == previous_orientation:
+                    print 'Failure'
+                    state[0] -= dy
+
+            elif dy != 0:
+                state[1] += sgny
+                print 'State: {0}'.format(state)
+                if diry == sgny:
+                    self.move('forward', 5000, 2000, 20)
+                elif diry != 0 and diry != sgny:
+                    self.move('backward', 5000, 2000, 20)
+                elif diry == 0:
+                    self.change_plane('left')
+                    state[1] -= sgny
+
+                self.get_orientation()
+                if self.orientation == previous_orientation:
+                    print 'Failure'
+                    state[1] -= dy
 
     def calibrate(self, action, direction='forward'):
         """ Calibrate parameters for IA.
@@ -199,10 +238,11 @@ class Cube(object):
         :param direction: Direction the action is taken in (forward or reverse)
         """
         valid_dirs = ['forward', 'backward']
-        valid_acts = ['traverse', 'horizontal_traverse', 'vertical_traverse',
-                      'horizontal_convex', 'vertical_convex',
-                      'horizontal_concave', 'vertical_concave',
-                      'corner_climb', 'stair_step']
+        valid_acts = [Cube.TRAVERSE, Cube.HORIZONTAL_TRAVERSE,
+                      Cube.VERTICAL_TRAVERSE, Cube.HORIZONTAL_CONVEX,
+                      Cube.VERTICAL_CONVEX, Cube.HORIZONTAL_CONCAVE,
+                      Cube.VERTICAL_CONCAVE, Cube.CORNER_CLIMB,
+                      Cube.STAIR_STEP]
 
         if direction not in valid_dirs:
             raise ValueError('Invalid direction: {0}'.format(direction))

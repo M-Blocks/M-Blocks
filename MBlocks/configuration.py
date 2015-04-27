@@ -180,20 +180,74 @@ class Config:
                 result.append(new_pos)
         return result
 
+    def _slice_graph(self, dim, f, g):
+        """Returns the slice graph of the configuration.
+
+        A slice is a subconfiguration for which one axis is fixed.
+
+        Note: f and g are min/max functions. If f is min, g is max and
+          vice-versa.
+        """
+        min_dim = f(cube[dim] for cube in self._graph.nodes())
+        max_dim = g(cube[dim] for cube in self._graph.nodes())
+
+        slices = []
+        for i in range(min_dim, max_dim + 1):
+            cubes = [cube for cube in self._graph.nodes() if cube[dim] == i]
+            slices.append(Config(cubes))
+
+        return slices
+
     def _move_to_tail(self, cube, tail, extend):
+        """Moves cube to extend tail.
+        """
         self._remove_cube(cube)
 
-        intermediate = []
         final_position = utils.add(tail, extend)
-        while cube != final_position:
-            intermediate.append(cube)
-            cube = self._rotate(cube, (0, 0, -1))
-        intermediate.append(cube)
+        path, moves = self._find_path(cube, final_position)
         self._add_cube(final_position, [tail])
 
-        return intermediate, final_position
+        return list(path), final_position
 
+    def _find_path(self, c0, c1):
+        """Find a pivoting path from c0 to c1.
+        """
+        dirs = [(1, 0, 0), (-1, 0, 0),
+                (0, 1, 0), (0, -1, 0),
+                (0, 0, 1), (0, 0, -1)]
+
+        # Do a BFS using pivoting moves to find valid positions
+        prev = {}
+        seen = set([c0])
+        queue = deque([c0])
+        while queue:
+            cube = queue.popleft()
+
+            if cube == c1:
+                break
+            for direction in dirs:
+                next_cube = self._rotate(cube, direction)
+                if next_cube not in seen:
+                    seen.add(next_cube)
+                    queue.append(next_cube)
+                    prev[next_cube] = (cube, direction)
+
+        # Reconstruct path
+        cube = c1
+        path = [c1]
+        moves = []
+        while cube != c0:
+            cube, move = prev[cube]
+            path.append(cube)
+            moves.append(move)
+
+        return reversed(path), reversed(moves)
+        
     def _rotate(self, c0, direction):
+        """Rotate c0 in a given direction.
+
+        Does nothing if the move cannot be performed.
+        """
         axis = 0
         posneg = direction[axis]
         while posneg == 0:
@@ -242,19 +296,53 @@ class Config:
             else:
                 return c2
         return c0
-        
-    def flatten(self):
-        tail = [self._extreme(min, min, min)]
-        extend = (0, -1, 0)
-        non_splitting = self._non_splitting() - set(tail)
 
+    def _flatten(self, tail, extend, slices):
         moves = []
-        while non_splitting:
-            cube = random.sample(non_splitting, 1)[0]
-            move, tail_cube = self._move_to_tail(cube, tail[-1], extend)
-            
-            tail.append(tail_cube)
-            moves.append(move)
-            non_splitting = self._non_splitting() - set(tail)
+        for S in reversed(slices):
+            # Find a root module
+            for cube in S._graph.nodes():
+                neighbor = utils.add(cube, extend)
+                if neighbor in self._graph.nodes():
+                    root = cube
+                    break
+            else:
+                root = None
+                    
+            non_splitting = S._non_splitting() - set(tail) - set([root])
+            while non_splitting:
+                sorted_ns = sorted(non_splitting, key=lambda c: len(self._neighbors(c)))
+                cube = sorted_ns[0]
+                move, tail_cube = self._move_to_tail(cube, tail[-1], extend)
+
+                S._remove_cube(cube)
+                tail.append(tail_cube)
+                moves.append(move)
+                non_splitting = S._non_splitting() - set(tail) - set([root])
+
+            if root is not None:
+                move, tail_cube = self._move_to_tail(root, tail[-1], extend)
+                tail.append(tail_cube)
+                moves.append(move)
 
         return moves
+        
+    def flatten(self):
+        """Flatten configuration into a line.
+
+        To change where the tail is, you need to change the following:
+          - definition of tail to use different min/max functions
+          - definition of extend
+          - the dimension argument in slices
+        """
+        tail = [self._extreme(min, min, min)]
+        extend = (0, 0, -1)
+        slices = self._slice_graph(2, min, max)
+
+        return self._flatten(tail, extend, slices)
+
+    def reconfigure(self, new_config):
+        moves_forward = self.flatten()
+        moves_reverse = list(reversed([list(reversed(l)) for l in new_config.flatten()]))
+
+        return moves_forward, moves_reverse

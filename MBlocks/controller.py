@@ -6,20 +6,11 @@ import os
 import random
 import serial
 import time
+import urllib2
 
 import utils
 
 class Cube(object):
-    TRAVERSE = 'traverse'
-    HORIZONTAL_TRAVERSE = 'horizontal_traverse'
-    VERTICAL_TRAVERSE = 'vertical_traverse'
-    HORIZONTAL_CONVEX = 'horizontal_convex'
-    VERTICAL_CONVEX = 'vertical_convex'
-    HORIZONTAL_CONCAVE = 'horizontal_concave'
-    VERTICAL_CONCAVE = 'vertical_concave'
-    CORNER_CLIMB = 'corner_climb'
-    STAIR_STEP = 'stair_step'
-
     def __init__(self, port, baud=115200):
         """Connect to a serial port at a given baud rate.
 
@@ -54,7 +45,11 @@ class Cube(object):
         self.direction = [1, 0]
 
         self.__calibrate = {}
-        self.read_calibration()
+        # self.read_calibration()
+
+    def do_action(direction, action):
+        command = self.__calibrate[action, direction]
+        self.ser.write(command + '\n')
 
     def move(self, direction, rpm=None, br=None, t=None):
         """Move cube in specified direction.
@@ -64,13 +59,6 @@ class Cube(object):
         :param direction: One of {left, right, forward, backward, up,
             down}; case insensitive.
         """
-        if rpm is None:
-            rpm = self.__calibrate(Cube.TRAVERSE, 'forward')[0]
-        if br is None:
-            br = self.__calibrate(Cube.TRAVERSE, 'forward')[1]
-        if t is None:
-            t = self.__calibrate(Cube.TRAVERSE, 'forward')[2]
-
         forward = 'ia f {0} {1} {2}\n'.format(rpm, br, t)
         reverse = 'ia r {0} {1} {2}\n'.format(rpm, br, t)
 
@@ -82,19 +70,15 @@ class Cube(object):
         if direction is 'backward':
             forward, reverse = reverse, forward
 
-        self.get_orientation()
-        before = self.orientation
+        before, after = 0, 0
 
-        self.ser.write(forward)
-        time.sleep(5)
-
-        self.get_orientation()
-        after = self.orientation
-
-        if before != after:
-            return True
-        else:
-            return False
+        while before == after:
+            self.get_orientation()
+            before = self.orientation
+            self.ser.write(forward)
+            time.sleep(3)
+            self.get_orientation()
+            after = self.orientation
 
     def disconnect(self):
         """Disconnect a serial connection.
@@ -118,7 +102,7 @@ class Cube(object):
         while True:
             try:
                 line = self.ser.readline()
-                if 'Gravity:' in line:
+                if '(int)' in line:
                     break
             except serial.serialutil.SerialException:
                 pass
@@ -231,62 +215,16 @@ class Cube(object):
                     print 'Failure'
                     state[1] -= dy
 
-    def calibrate(self, action, direction='forward'):
-        """ Calibrate parameters for IA.
-
-        :param action: Action the block will take (see Table 2)
-        :param direction: Direction the action is taken in (forward or reverse)
-        """
-        valid_dirs = ['forward', 'backward']
-        valid_acts = [Cube.TRAVERSE, Cube.HORIZONTAL_TRAVERSE,
-                      Cube.VERTICAL_TRAVERSE, Cube.HORIZONTAL_CONVEX,
-                      Cube.VERTICAL_CONVEX, Cube.HORIZONTAL_CONCAVE,
-                      Cube.VERTICAL_CONCAVE, Cube.CORNER_CLIMB,
-                      Cube.STAIR_STEP]
-
-        if direction not in valid_dirs:
-            raise ValueError('Invalid direction: {0}'.format(direction))
-        if action not in valid_acts:
-            raise ValueError('Invalid action: {0}'.format(action))
-
-        t = 30
-        min_rpm, max_rpm = 4500, 15000
-        min_br, max_br = 1500, 3000
-
-        for rpm in xrange(min_rpm, max_rpm, 500):
-            for br in xrange(min_br, max_br, 500):
-                print rpm, br
-                if self._move(direction, rpm, br, t):
-                    print "Success!"
-                    # Attempt same command 3 more times
-                    for i in xrange(3):
-                        if not self._move(direction, rpm, br, t):
-                            break
-                    else:
-                        self.__calibrate[action, direction] = (rpm,
-                                                               br,
-                                                               t)
-                        return
-
-    def write_calibration(self):
-        """ Write calibration to a file.
-
-        The filename is the same as the MAC address of the cube.
-        """
-        filename = self.mac_address.replace(":", "")
-        with open(filename, 'a') as f:
-            for k, v in self.__calibrate.items():
-                f.write('{0},{1},{2},{3},{4}\n'.format(k[0], k[1], *v))
-
     def read_calibration(self):
-        """ Read calibration from file.
-
-        The filename is the same as the MAC address of the cube.
-        If the file is not found, nothing happens.
+        """ Read calibration from Google Drive.
         """
-        filename = self.mac_address.replace(":", "")
-        if os.path.isfile("./" + filename):
-            with open(filename, 'rb') as f:
-                csvreader = csv.reader(f, delimiter=',')
-                for row in csvreader:
-                    self.__calibrate[row[0],row[1]] = row[2:]
+        url = 'http://docs.google.com/feeds/download/spreadsheets/Export?key=14VPabCGN6TftpdID9zgbFzsRx3mHq_iayQP6OTUrr3A&exportFormat=csv&gid=0'
+        response = urllib2.urlopen(url)
+        cr = csv.reader(response)
+
+        labels = next(cr)
+        for row in cr:
+            if row[0] == self.mac_address:
+                direction = row[2]
+                for i in range(3, 14):
+                    self.__calibrate[labels[i]] = row[i].strip()

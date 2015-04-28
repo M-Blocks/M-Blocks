@@ -12,8 +12,14 @@ def change_color(cube):
     for i in range(60):
         for face in range(1, 7):
             color = ''.join(random.sample(colors, 1)[0])
-            cube.ser.write(' '.join(('fbrgbled', color, 'tb', str(face))) + '\n')
+            cube.ser.write(' '.join(('fbrgbled', color, 't', str(face))) + '\n')
+
+            color = ''.join(random.sample(colors, 1)[0])
+            cube.ser.write(' '.join(('fbrgbled', color, 'b', str(face))) + '\n')
+
         time.sleep(2)
+    stop_color(cube)
+    cube.disconnect()
 
 def stop_color(cube):
     cube.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
@@ -34,6 +40,11 @@ def ceo_demo_temp(ports):
 
     for cube in cubes:
         cube.disconnect()
+
+def ceo_demo_colors(ports):
+    cubes = [Cube(port) for port in ports]
+    for cube in cubes:
+        thread.start_new_thread(change_color, (cube,))
 
 def ceo_demo(ports):
     """

@@ -1,14 +1,19 @@
 from itertools import izip
 
 import csv
+import fcntl
 import math
 import os
 import random
+import re
 import serial
 import time
 import urllib2
 
 import utils
+
+class NoCubeException(Exception):
+    pass
 
 class Cube(object):
     def __init__(self, port, baud=115200):
@@ -23,19 +28,25 @@ class Cube(object):
         self.ser.write('atd\n')
 
         # Get MAC address of cube (unique)
+        found = False
         line = ''
-        while True:
+        for i in range(10):
             try:
                 line = self.ser.readline()
                 if 'CONN' == line[:4]:
+                    found = True
                     break
             except serial.serialutil.SerialException:
                 pass
+        if not found:
+            raise NoCubeException
         self.mac_address = line.split()[1]
+        self.ser.readline()
 
-        self.orientation = 0
+        self.ser.flushInput()
+        self.ser.flushOutput()
+
         self.reverse = False
-
         self.neighbours = []
 
         self._left = {1: True, 2: False, -1: False, -2: True}
@@ -44,10 +55,35 @@ class Cube(object):
         # Forward is the along the positive x-axis
         self.direction = [1, 0]
 
-        self.__calibrate = {}
-        # self.read_calibration()
+        self.__calibrate = self._read_calibration()
+        self.__configs = self._read_configs()
 
-    def do_action(direction, action):
+    def disconnect(self):
+        """Disconnect a serial connection.
+
+        :param ser: Serial connector to disconnect.
+        :type ser: serial.Serial.
+        """
+        if not self.ser.isOpen():
+            self.ser.open()
+        self.ser.write('blediscon\n')
+        self.ser.close()
+
+    def move_towards(self, face):
+        config = self._find_config()
+        if config['Forward'] == face or config['Top'] == face:
+            # TODO: Make context specific based on neighbors
+            self.move('forward', 6000, 2300, 20)
+        elif config['Backward'] == face or config['Bottom'] == face:
+            self.move('backward', 6000, 2300, 20)
+        elif config['Left'] == face:
+            self.change_plane('left')
+            self.move('forward', 6000, 2300, 20)
+        else:
+            self.change_plane('right')
+            self.move('forward', 6000, 2300, 20)
+
+    def do_action(self, direction, action):
         command = self.__calibrate[action, direction]
         self.ser.write(command + '\n')
 
@@ -70,107 +106,42 @@ class Cube(object):
         if direction is 'backward':
             forward, reverse = reverse, forward
 
-        before, after = 0, 0
+        before, after = {}, {}
 
         while before == after:
-            self.get_orientation()
-            before = self.orientation
+            before = self._find_config()
             self.ser.write(forward)
             time.sleep(3)
-            self.get_orientation()
-            after = self.orientation
-
-    def disconnect(self):
-        """Disconnect a serial connection.
-
-        :param ser: Serial connector to disconnect.
-        :type ser: serial.Serial.
-        """
-        if not self.ser.isOpen():
-            self.ser.open()
-        self.ser.write('blediscon\n')
-        self.ser.close()
-
-    def get_orientation(self):
-        """Determine orientation of cube.
-        """
-        if not self.ser.isOpen():
-            self.ser.open()
-        self.ser.write('imugravity\n')
-
-        line = ''
-        while True:
-            try:
-                line = self.ser.readline()
-                if '(int)' in line:
-                    break
-            except serial.serialutil.SerialException:
-                pass
-
-        s, e = line.index('['), line.index(']')
-        grav = [int(x) for x in line[s+1:e].split()]
-
-        thresh = 10
-        planes = [[0, 0, 1], [0.707107, -0.707107, 0], [0.707107,
-            0.707107, 0]]
-
-        for i, plane in enumerate(planes):
-            angle = utils.angle(plane, grav) / math.pi * 180
-            if angle < thresh:
-                self.orientation = i
-                break
-            elif angle > 180 - thresh:
-                self.orientation = -i
-                break
+            after = self._find_config
 
     def change_plane(self, direction):
         """Change plane to align with a specified direction.
 
-        :param direction: One of {left, right, up, down}. A plane
-            corresponds to two directions: one for each
-            of (left, right) and (up, down).
+        :param direction: One of {Left, Right, Top}.
         """
-        forward = 'cp b f 1000 5\n'
-        reverse = 'cp b r 1000 5\n'
-
-        # Need to check if connected to cube and want to move sideways
-        self.get_orientation()
-        if abs(self.orientation) == 1:
-            d = 2
-        elif abs(self.orientation) == 2:
-            d = 1
+        config = self._find_config()
+        if direction is 'Top':
+            face = 0
         else:
-            d = 0
+            face = config[direction]
 
-        # Check if forward direction should be reversed
-        if direction is 'left' and self._left[self.orientation]:
-            self.reverse = not self.reverse
-        elif direction is 'right' and self._right[self.orientation]:
-            self.reverse = not self.reverse
-
-        # Determine direction of forward vector
-        if direction is 'left':
-            self.direction = utils.rotate(self.direction, math.pi/2)
-        if direction is 'right':
-            self.direction = utils.rotate(self.direction, -math.pi/2)
-
-        print 'Direction: {0}'.format(self.direction)
-
-        print 'Current: {0}'.format(self.orientation)
-        print 'Desired: {0}'.format(d)
+        forward = 'cp b f 4000 50\n'
+        reverse = 'cp b r 4000 50\n'
 
         try_num = 0
-        while abs(self.orientation) != d:
+        while config['Forward'] != face:
             orient = abs(self.orientation)
-            if (orient + 1) % 3 == d:
+            if config['Left'] == face:
                 self.ser.write(forward)
             else:
                 self.ser.write(reverse)
             time.sleep(15)
-            self.get_orientation()
+            config = self._find_config()
 
             try_num += 1
 
+        self.ser.flushInput()
+        self.ser.flushOutput()
         print 'Final: {0} (tries: {1})'.format(self.orientation,
                 try_num)
 
@@ -178,8 +149,6 @@ class Cube(object):
         while state != goal:
             dx, dy = (goal[i] - state[i] for i in range(2))
             dirx, diry = self.direction
-
-            previous_orientation = self.orientation
 
             sgnx = utils.sgn(dx)
             sgny = utils.sgn(dy)
@@ -191,13 +160,8 @@ class Cube(object):
                 elif dirx != 0 and dirx != sgnx:
                     self.move('backward', 5000, 2000, 20)
                 elif dirx == 0:
-                    self.change_plane('left')
+                    self.change_plane('Left')
                     state[0] -= sgnx
-
-                self.get_orientation()
-                if self.orientation == previous_orientation:
-                    print 'Failure'
-                    state[0] -= dy
 
             elif dy != 0:
                 state[1] += sgny
@@ -210,21 +174,71 @@ class Cube(object):
                     self.change_plane('left')
                     state[1] -= sgny
 
-                self.get_orientation()
-                if self.orientation == previous_orientation:
-                    print 'Failure'
-                    state[1] -= dy
+    def _read_configs(self):
+        """Read configuration information from Google Drive.
+        """
+        with open('cube_config.csv', 'rb') as csvfile:
+            cr = csv.reader(csvfile)
 
-    def read_calibration(self):
+            result = []
+            labels = next(cr)
+            for row in cr:
+                config = {}
+                for label, d in zip(labels, row):
+                    config[label] = tuple(int(x) for x in d.strip().split(','))
+                    if len(config[label]) == 1:
+                        config[label] = config[label][0]
+                result.append(config)
+
+        return result
+
+    def _read_calibration(self):
         """ Read calibration from Google Drive.
         """
         url = 'http://docs.google.com/feeds/download/spreadsheets/Export?key=14VPabCGN6TftpdID9zgbFzsRx3mHq_iayQP6OTUrr3A&exportFormat=csv&gid=0'
         response = urllib2.urlopen(url)
         cr = csv.reader(response)
 
+        result = {}
         labels = next(cr)
         for row in cr:
             if row[0] == self.mac_address:
                 direction = row[2]
                 for i in range(3, 14):
-                    self.__calibrate[labels[i]] = row[i].strip()
+                    result[labels[i]] = row[i].strip()
+
+        return result
+
+    def _read_imu(self, sensor):
+        self.ser.write('imuselect {0}\n'.format(sensor))
+        self.ser.write('imugravity\n')
+        while True:
+            line = self.ser.readline()
+            if 'Active IMU' in line:
+                break
+
+        lines = [self.ser.readline() for i in range(5)]
+        alpha = float(re.findall('\d+.\d+', lines[2])[-1])
+        beta = float(re.findall('\d+.\d+', lines[3])[-1])
+        gamma = float(re.findall('\d+.\d+', lines[4])[-1])
+
+        return alpha, beta, gamma
+
+    def _find_config(self):
+        c_alpha, c_beta, c_gamma = self._read_imu('c')
+        f_alpha, f_beta, f_gamma = self._read_imu('f')
+
+        MAX_ERROR = 10
+        central_label = 'Central Alignment'
+        face_label = 'Face Alignment'
+        for config in self.__configs:
+            conf_c_alpha, conf_c_beta, conf_c_gamma = config[central_label]
+            conf_f_alpha, conf_f_beta, conf_f_gamma = config[face_label]
+
+            if abs(c_alpha - conf_c_alpha) < MAX_ERROR and \
+               abs(c_beta - conf_c_beta) < MAX_ERROR and \
+               abs(c_gamma - conf_c_gamma) < MAX_ERROR and \
+               abs(f_alpha - conf_f_alpha) < MAX_ERROR and \
+               abs(f_beta - conf_f_beta) < MAX_ERROR and \
+               abs(f_gamma - conf_f_gamma) < MAX_ERROR:
+                return config

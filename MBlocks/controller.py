@@ -3,6 +3,7 @@ from itertools import izip
 import csv
 import fcntl
 import math
+import operator
 import os
 import random
 import re
@@ -71,21 +72,33 @@ class Cube(object):
 
     def move_towards(self, face):
         config = self._find_config()
-        if config['Forward'] == face or config['Top'] == face:
-            # TODO: Make context specific based on neighbors
-            self.move('forward', 6000, 2300, 20)
-        elif config['Backward'] == face or config['Bottom'] == face:
-            self.move('backward', 6000, 2300, 20)
-        elif config['Left'] == face:
-            self.change_plane('left')
-            self.move('forward', 6000, 2300, 20)
-        else:
-            self.change_plane('right')
-            self.move('forward', 6000, 2300, 20)
+        if config['Left'] == face:
+            self.change_plane('Left')
+        elif config['Right'] == face:
+            self.change_plane('Right')
 
-    def do_action(self, direction, action):
-        command = self.__calibrate[action, direction]
-        self.ser.write(command + '\n')
+        config = self._find_config()
+        if config['Forward'] == face:
+            self.do_action('forward', 'traverse')
+        elif config['Backward'] == face:
+            self.do_action('reverse', 'traverse')
+
+    def do_action(self, action, direction):
+        """Performs an action until it is successful."""
+        success = False
+        while not success:
+            prev_config = self._find_config()
+            command = self.__calibrate[action, direction]
+            self.ser.write(command + '\n')
+
+            # Check if move was successful
+            time.sleep(10)
+            curr_config = self._find_config()
+            if action == 'traverse':
+                success = (prev_config['Forward'] == curr_config['Bottom']) or\
+                          (prev_config['Top'] == curr_config['Bottom'])
+            elif action == 'corner_climb' or action == 'stair_step':
+                success = (prev_config['Top'] == curr_config['Bottom'])
 
     def move(self, direction, rpm=None, br=None, t=None):
         """Move cube in specified direction.
@@ -129,8 +142,7 @@ class Cube(object):
         reverse = 'cp b r 4000 50\n'
 
         try_num = 0
-        while config['Forward'] != face:
-            orient = abs(self.orientation)
+        while config['Forward'] != face and config['Backward'] != face:
             if config['Left'] == face:
                 self.ser.write(forward)
             else:
@@ -140,8 +152,6 @@ class Cube(object):
 
             try_num += 1
 
-        self.ser.flushInput()
-        self.ser.flushOutput()
         print 'Final: {0} (tries: {1})'.format(self.orientation,
                 try_num)
 
@@ -174,6 +184,22 @@ class Cube(object):
                     self.change_plane('left')
                     state[1] -= sgny
 
+    def light_follower(self):
+        sensors = self._read_light_sensors()
+        config = self._find_config()
+        print sensors
+        print config
+
+        sorted_faces = sorted(sensors.items(), key=operator.itemgetter(1), reverse=True)
+        print sorted_faces
+
+        for face, val in sorted_faces:
+            if config['Bottom'] == face or config['Top'] == face:
+                continue
+            print face
+            # move_towards(face)
+            break
+
     def _read_configs(self):
         """Read configuration information from Google Drive.
         """
@@ -205,7 +231,7 @@ class Cube(object):
             if row[0] == self.mac_address:
                 direction = row[2]
                 for i in range(3, 14):
-                    result[labels[i]] = row[i].strip()
+                    result[labels[i], direction] = row[i].strip()
 
         return result
 
@@ -223,6 +249,31 @@ class Cube(object):
         gamma = float(re.findall('\d+.\d+', lines[4])[-1])
 
         return alpha, beta, gamma
+
+    def _read_light_sensor(self, face):
+        """Read the light sensor at a face."""
+        self.ser.write('fbrxen {0} 1\n'.format(face))
+        self.ser.write('fblight {0}\n'.format(face))
+
+        s = 'Faceboard {0} ambient light:'.format(face)
+        while True:
+            line = self.ser.readline()
+            if s in line:
+                break
+        self.ser.write('fbrxen {0} 0\n'.format(face))
+
+        sensor = line.split(':')[1]
+        return int(sensor.strip())
+
+    def _read_light_sensors(self):
+        """Reads the light sensors at each of the faces and returns a
+           dictionary with results.
+        """
+        res = {}
+        for face in xrange(1, 7):
+            res[face] = self._read_light_sensor(face)
+
+        return res
 
     def _find_config(self):
         c_alpha, c_beta, c_gamma = self._read_imu('c')

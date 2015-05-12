@@ -66,5 +66,9 @@ def ceo_demo(ports):
                 cube.ser.write('ia f 6000 1500 20\n')
             time.sleep(3)
 
-if __name__ == '__m in__':
-    ceo_demo()
+def csail_demo(ports):
+    cubes = [Cube(port) for port in ports]
+
+    cubes[0].do_action('corner_climb', 'forward')
+    cubes[0].do_action('traverse', 'forward')
+    cubes[0].do_action('traverse', 'forward')

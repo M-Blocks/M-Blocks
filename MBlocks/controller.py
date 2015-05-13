@@ -1,11 +1,5 @@
-from itertools import izip
-
 import csv
-import fcntl
-import math
 import operator
-import os
-import random
 import re
 import serial
 import time
@@ -13,8 +7,10 @@ import urllib2
 
 import utils
 
+
 class NoCubeException(Exception):
     pass
+
 
 class Cube(object):
     def __init__(self, port, baud=115200):
@@ -60,15 +56,18 @@ class Cube(object):
         self.__configs = self._read_configs()
 
     def disconnect(self):
-        """Disconnect a serial connection.
-
-        :param ser: Serial connector to disconnect.
-        :type ser: serial.Serial.
-        """
+        """Disconnect the cube."""
         if not self.ser.isOpen():
             self.ser.open()
         self.ser.write('blediscon\n')
         self.ser.close()
+
+    def restart(self):
+        """Reinitializes the IMU units."""
+        self.ser.write('imuinit\n')
+        time.sleep(5)
+        self.ser.write('atd\n')
+        time.sleep(5)
 
     def move_towards(self, face):
         config = self._find_config()
@@ -79,9 +78,9 @@ class Cube(object):
 
         config = self._find_config()
         if config['Forward'] == face:
-            self.do_action('forward', 'traverse')
+            self.do_action('traverse', 'forward')
         elif config['Backward'] == face:
-            self.do_action('reverse', 'traverse')
+            self.do_action('traverse', 'reverse')
 
     def do_action(self, action, direction):
         """Performs an action until it is successful."""
@@ -153,7 +152,7 @@ class Cube(object):
             try_num += 1
 
         print 'Final: {0} (tries: {1})'.format(self.orientation,
-                try_num)
+                                               try_num)
 
     def lattice_planner(self, state, goal):
         while state != goal:
@@ -198,7 +197,7 @@ class Cube(object):
                 continue
             print face
             # move_towards(face)
-            break
+            input("Any key to continue.")
 
     def _read_configs(self):
         """Read configuration information from Google Drive.
@@ -236,17 +235,21 @@ class Cube(object):
         return result
 
     def _read_imu(self, sensor):
-        self.ser.write('imuselect {0}\n'.format(sensor))
-        self.ser.write('imugravity\n')
         while True:
-            line = self.ser.readline()
-            if 'Active IMU' in line:
+            try:
+                self.ser.write('imuselect {0}\n'.format(sensor))
+                self.ser.write('imugravity\n')
+                while True:
+                    line = self.ser.readline()
+                    if 'Active IMU' in line:
+                        break
+                lines = [self.ser.readline() for i in range(5)]
+                alpha = float(re.findall('\d+.\d+', lines[2])[-1])
+                beta = float(re.findall('\d+.\d+', lines[3])[-1])
+                gamma = float(re.findall('\d+.\d+', lines[4])[-1])
                 break
-
-        lines = [self.ser.readline() for i in range(5)]
-        alpha = float(re.findall('\d+.\d+', lines[2])[-1])
-        beta = float(re.findall('\d+.\d+', lines[3])[-1])
-        gamma = float(re.findall('\d+.\d+', lines[4])[-1])
+            except IndexError:
+                self.restart()
 
         return alpha, beta, gamma
 

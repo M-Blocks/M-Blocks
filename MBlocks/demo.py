@@ -7,6 +7,7 @@ import time
 
 do_change = True
 
+
 def change_color(cube):
     colors = list(chain(combinations('rgb', 1), combinations('rgb', 2)))
     for i in range(60):
@@ -21,8 +22,10 @@ def change_color(cube):
     stop_color(cube)
     cube.disconnect()
 
+
 def stop_color(cube):
     cube.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+
 
 def ceo_demo_temp(ports):
     cubes = [Cube(port) for port in ports]
@@ -41,10 +44,12 @@ def ceo_demo_temp(ports):
     for cube in cubes:
         cube.disconnect()
 
+
 def ceo_demo_colors(ports):
     cubes = [Cube(port) for port in ports]
     for cube in cubes:
         thread.start_new_thread(change_color, (cube,))
+
 
 def ceo_demo(ports):
     """
@@ -66,9 +71,11 @@ def ceo_demo(ports):
                 cube.ser.write('ia f 6000 1500 20\n')
             time.sleep(3)
 
+
 def csail_demo(ports):
     cubes = [Cube(port) for port in ports]
 
-    cubes[0].do_action('corner_climb', 'forward')
-    cubes[0].do_action('traverse', 'forward')
-    cubes[0].do_action('traverse', 'forward')
+    # Black cloudy and red cloudy move together
+    # TODO  
+    # Black moves along lattice in cycle
+    # TODO

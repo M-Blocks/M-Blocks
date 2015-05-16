@@ -183,21 +183,22 @@ class Cube(object):
                     self.change_plane('left')
                     state[1] -= sgny
 
-    def light_follower(self):
+    def find_strongest_light_signal(self):
+        """Returns the face number and sensor value of the face with 
+        the strongest light stimulation.
+
+        Excludes the Top and Bottom faces.
+        """
         sensors = self._read_light_sensors()
-        config = self._find_config()
-        print sensors
-        print config
+        sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
+        face, value = max(sensors.items(), key=operator.itemgetter(1))
+        
+        return face, value
 
-        sorted_faces = sorted(sensors.items(), key=operator.itemgetter(1), reverse=True)
-        print sorted_faces
-
-        for face, val in sorted_faces:
-            if config['Bottom'] == face or config['Top'] == face:
-                continue
-            print face
-            # move_towards(face)
-            input("Any key to continue.")
+    def light_follower(self):
+        while True:
+            face, _ = self.find_strongest_light_signal()
+            move_towards(face)
 
     def _read_configs(self):
         """Read configuration information from Google Drive.
@@ -270,13 +271,19 @@ class Cube(object):
 
     def _read_light_sensors(self):
         """Reads the light sensors at each of the faces and returns a
-           dictionary with results.
+        dictionary with results.
         """
         res = {}
         for face in xrange(1, 7):
             res[face] = self._read_light_sensor(face)
 
-        return res
+        result = {}
+        config = self._find_config()
+        for k, v in config.items():
+            if config[v] in xrange(1, 7):
+                result[k] = res[face]
+
+        return result
 
     def _find_config(self):
         c_alpha, c_beta, c_gamma = self._read_imu('c')

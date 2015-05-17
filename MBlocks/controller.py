@@ -71,22 +71,9 @@ class Cube(object):
 
     def do_action(self, action, direction):
         """Performs an action until it is successful."""
-        success = False
-        while not success:
-            prev_config = self._find_config()
-            command = self.__calibrate[action, direction]
-            self.ser.write(command + '\n')
-
-            # Check if move was successful
-            time.sleep(10)
-            curr_config = self._find_config()
-            if action == 'traverse':
-                success = (prev_config['Forward'] == curr_config['Bottom']) or\
-                          (prev_config['Top'] == curr_config['Bottom'])
-            elif action == 'corner_climb' or action == 'stair_step':
-                success = (prev_config['Top'] == curr_config['Bottom'])
-            else:
-                success = True
+        command = self.__calibrate[action, direction]
+        self.ser.write(command + '\n')
+        time.sleep(5)
 
     def move(self, direction, rpm=None, br=None, t=None):
         """Move cube in specified direction.
@@ -142,7 +129,7 @@ class Cube(object):
 
             try_num += 1
 
-        print 'Final: {0} (tries: {1})'.format(config, try_num)
+        print('Final: {0} (tries: {1})'.format(config, try_num))
 
     def _read_mac_address(self):
         # Get MAC address of cube (unique)
@@ -165,7 +152,7 @@ class Cube(object):
         return line.split()[1]
 
     def find_strongest_light_signal(self):
-        """Returns the face number and sensor value of the face with 
+        """Returns the face number and sensor value of the face with
         the strongest light stimulation.
 
         Excludes the Top and Bottom faces.
@@ -173,7 +160,7 @@ class Cube(object):
         sensors = self._read_light_sensors()
         sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
         face, value = max(sensors.items(), key=operator.itemgetter(1))
-        
+
         return face, value
 
     def light_follower(self):
@@ -211,7 +198,7 @@ class Cube(object):
         for row in cr:
             if row[0] == self.mac_address:
                 direction = row[2]
-                for i in range(3, 14):
+                for i in range(3, len(labels)):
                     result[labels[i], direction] = row[i].strip()
 
         return result
@@ -266,8 +253,8 @@ class Cube(object):
         result = {}
         config = self._find_config()
         for k, v in config.items():
-            if config[v] in xrange(1, 7):
-                result[k] = res[face]
+            if k in ('Top', 'Bottom', 'Left', 'Right', 'Forward', 'Backward'):
+                result[k] = res[v]
 
         return result
 

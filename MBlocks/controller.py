@@ -5,8 +5,6 @@ import serial
 import time
 import urllib2
 
-import utils
-
 
 class NoCubeException(Exception):
     pass
@@ -24,30 +22,10 @@ class Cube(object):
         self.ser = serial.Serial(port, baud, timeout=1)
         self.ser.write('atd\n')
 
-        # Get MAC address of cube (unique)
-        found = False
-        line = ''
-        for i in range(10):
-            try:
-                line = self.ser.readline()
-                if 'CONN' == line[:4]:
-                    found = True
-                    break
-            except serial.serialutil.SerialException:
-                pass
-        if not found:
-            raise NoCubeException
-        self.mac_address = line.split()[1]
-        self.ser.readline()
-
-        self.ser.flushInput()
-        self.ser.flushOutput()
+        self.mac_address = self._read_mac_address()
 
         self.reverse = False
         self.neighbours = []
-
-        self._left = {1: True, 2: False, -1: False, -2: True}
-        self._right = {1: False, 2: True, -1: True, -2: False}
 
         # Forward is the along the positive x-axis
         self.direction = [1, 0]
@@ -68,6 +46,15 @@ class Cube(object):
         time.sleep(5)
         self.ser.write('atd\n')
         time.sleep(5)
+
+        mac_address = self._read_mac_address()
+        while mac_address != self.mac_address:
+            time.sleep(5)
+            self.ser.write('blediscon\n')
+            time.sleep(2)
+            self.ser.write('atd\n')
+            time.sleep(5)
+            mac_address = self._read_mac_address()
 
     def move_towards(self, face):
         config = self._find_config()
@@ -98,6 +85,8 @@ class Cube(object):
                           (prev_config['Top'] == curr_config['Bottom'])
             elif action == 'corner_climb' or action == 'stair_step':
                 success = (prev_config['Top'] == curr_config['Bottom'])
+            else:
+                success = True
 
     def move(self, direction, rpm=None, br=None, t=None):
         """Move cube in specified direction.
@@ -129,16 +118,16 @@ class Cube(object):
     def change_plane(self, direction):
         """Change plane to align with a specified direction.
 
-        :param direction: One of {Left, Right, Top}.
+        :param direction: One of {Left, Right, Top, Bottom}.
         """
+        forward = 'cp b f 4000 50\n'
+        reverse = 'cp b r 4000 50\n'
+
         config = self._find_config()
-        if direction is 'Top':
+        if direction is 'Top' or direction is 'Bottom':
             face = 0
         else:
             face = config[direction]
-
-        forward = 'cp b f 4000 50\n'
-        reverse = 'cp b r 4000 50\n'
 
         try_num = 0
         while config['Forward'] != face and config['Backward'] != face:
@@ -148,56 +137,49 @@ class Cube(object):
                 self.ser.write(reverse)
             time.sleep(15)
             config = self._find_config()
+            if config is None:
+                config = {'Forward': -1, 'Backward': -1, 'Left': face}
 
             try_num += 1
 
-        print 'Final: {0} (tries: {1})'.format(self.orientation,
-                                               try_num)
-
-    def lattice_planner(self, state, goal):
-        while state != goal:
-            dx, dy = (goal[i] - state[i] for i in range(2))
-            dirx, diry = self.direction
-
-            sgnx = utils.sgn(dx)
-            sgny = utils.sgn(dy)
-            if dx != 0:
-                state[0] += sgnx
-                print 'State: {0}'.format(state)
-                if dirx == sgnx:
-                    self.move('forward', 5000, 2000, 20)
-                elif dirx != 0 and dirx != sgnx:
-                    self.move('backward', 5000, 2000, 20)
-                elif dirx == 0:
-                    self.change_plane('Left')
-                    state[0] -= sgnx
-
-            elif dy != 0:
-                state[1] += sgny
-                print 'State: {0}'.format(state)
-                if diry == sgny:
-                    self.move('forward', 5000, 2000, 20)
-                elif diry != 0 and diry != sgny:
-                    self.move('backward', 5000, 2000, 20)
-                elif diry == 0:
-                    self.change_plane('left')
-                    state[1] -= sgny
+        print 'Final: {0} (tries: {1})'.format(config, try_num)
 
     def light_follower(self):
-        sensors = self._read_light_sensors()
-        config = self._find_config()
-        print sensors
-        print config
+        for i in xrange(5):
+            sensors = self._read_light_sensors()
+            config = self._find_config()
+            print sensors
+            print config
 
-        sorted_faces = sorted(sensors.items(), key=operator.itemgetter(1), reverse=True)
-        print sorted_faces
+            sorted_faces = sorted(sensors.items(), key=operator.itemgetter(1), reverse=True)
+            print sorted_faces
 
-        for face, val in sorted_faces:
-            if config['Bottom'] == face or config['Top'] == face:
-                continue
-            print face
-            # move_towards(face)
-            input("Any key to continue.")
+            for face, val in sorted_faces:
+                if config['Bottom'] == face or config['Top'] == face:
+                    continue
+                print face
+                self.move_towards(face)
+                break
+
+    def _read_mac_address(self):
+        # Get MAC address of cube (unique)
+        found = False
+        line = ''
+        for i in range(10):
+            try:
+                line = self.ser.readline()
+                if 'CONN' == line[:4]:
+                    found = True
+                    break
+            except serial.serialutil.SerialException:
+                pass
+        if not found:
+            raise NoCubeException
+
+        self.ser.flushInput()
+        self.ser.flushOutput()
+
+        return line.split()[1]
 
     def _read_configs(self):
         """Read configuration information from Google Drive.
@@ -266,7 +248,12 @@ class Cube(object):
         self.ser.write('fbrxen {0} 0\n'.format(face))
 
         sensor = line.split(':')[1]
-        return int(sensor.strip())
+        try:
+            val = int(sensor.strip())
+        except ValueError:
+            val = None
+
+        return val
 
     def _read_light_sensors(self):
         """Reads the light sensors at each of the faces and returns a

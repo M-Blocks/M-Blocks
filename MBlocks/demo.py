@@ -75,7 +75,19 @@ def ceo_demo(ports):
 def csail_demo(ports):
     cubes = [Cube(port) for port in ports]
 
-    # Black cloudy and red cloudy move together
-    # TODO  
+    # Red cloudy moves back and forth using horizontal convex moves
+    for cube in cubes:
+        if cube.mac_address == 'C6:27:2E:44:13:82':
+            traverse_cube = cube
+            break
+    while True:
+        for i in xrange(3):
+            traverse_cube.do_action('horizontal_traverse', 'forward')
+        for i in xrange(3):
+            traverse_cube.do_action('horizontal_traverse', 'reverse')
+
     # Black moves along lattice in cycle
     # TODO
+
+    for cube in cubes:
+        cube.disconnect()

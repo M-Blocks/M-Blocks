@@ -131,6 +131,41 @@ class Cube(object):
 
         print('Final: {0} (tries: {1})'.format(config, try_num))
 
+    def send_message(self, face, message):
+        self.ser.write('fbirled {0}\n'.format(face))
+        self.ser.write('fbtxled {0} 1\n'.format(face))
+        self.ser.write('fbtxcount {0}\n'.format(face))
+        self.ser.write('fbtx {0} {1}\n'.format(face, message))
+        self.ser.write('fbtxled {0}\n'.format(face))
+
+    def read_message(self, face, length):
+        self.ser.write('fbrxen {0} 1\n'.format(face))
+        self.ser.write('fbrx {0} {1}\n'.format(face, length))
+
+        while True:
+            line = self.ser.readline()
+            if 'Read' in line:
+                break
+        msg = self.ser.readline()
+        return msg
+
+    def find_strongest_light_signal(self):
+        """Returns the face number and sensor value of the face with
+        the strongest light stimulation.
+
+        Excludes the Top and Bottom faces.
+        """
+        sensors = self._read_light_sensors()
+        sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
+        face, value = max(sensors.items(), key=operator.itemgetter(1))
+
+        return face, value
+
+    def light_follower(self):
+        while True:
+            face, _ = self.find_strongest_light_signal()
+            move_towards(face)
+
     def _read_mac_address(self):
         # Get MAC address of cube (unique)
         found = False
@@ -150,23 +185,6 @@ class Cube(object):
         self.ser.flushOutput()
 
         return line.split()[1]
-
-    def find_strongest_light_signal(self):
-        """Returns the face number and sensor value of the face with
-        the strongest light stimulation.
-
-        Excludes the Top and Bottom faces.
-        """
-        sensors = self._read_light_sensors()
-        sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
-        face, value = max(sensors.items(), key=operator.itemgetter(1))
-
-        return face, value
-
-    def light_follower(self):
-        while True:
-            face, _ = self.find_strongest_light_signal()
-            move_towards(face)
 
     def _read_configs(self):
         """Read configuration information from Google Drive.

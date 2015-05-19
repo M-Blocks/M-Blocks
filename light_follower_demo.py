@@ -29,11 +29,14 @@ def light_follower_demo():
         leader, driver = cube1, cube0
     control = TwoCubeController(leader, driver)
 
-    while True:
+    max_value = 0
+    EPS = 20
+    for i in range(10):
         try:
             face, value = driver.find_strongest_light_signal()
+            max_value = max(max_value, value)
             print face, value
-            if face == 'Forward':
+            if face == 'Forward' and value >= max_value - EPS:
                 control.advance('forward')
             # elif face is 'Backward':
             #    control.drive('r')
@@ -43,6 +46,9 @@ def light_follower_demo():
             leader.disconnect()
             driver.disconnect()
             break
+
+    leader.disconnect()
+    driver.disconnect()
 
 if __name__ == '__main__':
     light_follower_demo()

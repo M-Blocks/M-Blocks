@@ -38,7 +38,10 @@ class Cube(object):
         self._show_battery()
 
     def disconnect(self):
-        """Disconnect the cube."""
+        """Disconnect the cube. Also stops the motor and shuts off the lights."""
+        self.ser.write('bldcstop\n')
+        self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+
         if not self.ser.isOpen():
             self.ser.open()
         self.ser.write('blediscon\n')

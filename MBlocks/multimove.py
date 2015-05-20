@@ -18,9 +18,9 @@ def accel(cubes, dirs, rpms):
     time.sleep(3)
 
 
-def brake(cubes, dirs, rpms, ts, delay):
-    for cube, d, rpm, t in zip(cubes, dirs, rpms, ts):
-        cube.ser.write('brake {0} {1} {2}\n'.format(d, rpm, t))
+def brake(cubes, dirs, amps, ts, delay):
+    for cube, d, amp, t in zip(cubes, dirs, amps, ts):
+        cube.ser.write('brake {0} {1} {2}\n'.format(d, amp, t))
         time.sleep(delay)
 
     time.sleep(3)

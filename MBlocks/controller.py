@@ -3,6 +3,7 @@ import operator
 import re
 import serial
 import time
+import threading
 import urllib2
 
 
@@ -32,6 +33,9 @@ class Cube(object):
 
         self.__calibrate = self._read_calibration()
         self.__configs = self._read_configs()
+
+        # Show battery when connecting
+        self._show_battery()
 
     def disconnect(self):
         """Disconnect the cube."""
@@ -166,6 +170,26 @@ class Cube(object):
             face, _ = self.find_strongest_light_signal()
             move_towards(face)
 
+    def _show_battery(self):
+        self.ser.write('vbat\n')
+        while True:
+            line = self.ser.readline()
+            if 'Battery' in line:
+                break
+
+        battery = int(re.findall('\d+', line)[-1])
+        if battery >= 3950:
+            self.ser.write('fbrgbled g tb 1 2 3 4 5 6\n')
+        elif battery >= 3800:
+            self.ser.write('fbrgbled rg tb 1 2 3 4 5 6\n')
+        else:
+            self.ser.write('fbrgbled r tb 1 2 3 4 5 6\n')
+
+        def stop_showing():
+            time.sleep(3)
+            self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+        threading.Thread(target=stop_showing).start()
+
     def _read_mac_address(self):
         # Get MAC address of cube (unique)
         found = False
@@ -215,9 +239,9 @@ class Cube(object):
         labels = next(cr)
         for row in cr:
             if row[0] == self.mac_address:
-                direction = row[2]
-                for i in range(3, len(labels)):
-                    result[labels[i], direction] = row[i].strip()
+                direction = row[3].strip()
+                for i in range(4, len(labels)):
+                    result[labels[i].strip(), direction] = row[i].strip()
 
         return result
 

@@ -1,4 +1,5 @@
 import csv
+import math
 import operator
 import re
 import serial
@@ -6,13 +7,15 @@ import time
 import threading
 import urllib2
 
+import MBlocks.utils as utils
+
 
 class NoCubeException(Exception):
     pass
 
 
 class Cube(object):
-    def __init__(self, port, baud=115200):
+    def __init__(self, port, baud=115200, position=(0, 0, 0)):
         """Connect to a serial port at a given baud rate.
 
         :param port: Port number to connect to.
@@ -28,11 +31,15 @@ class Cube(object):
         self.reverse = False
         self.neighbours = []
 
+        # Forward is the along the negative x-axis
+        self._left = {1: True, 2: False, -1: False, -2: True}
+        self._right = {1: False, 2: True, -1: True, -2: False}
+
         # Forward is the along the positive x-axis
-        self.direction = [1, 0]
+        self.direction = (1, 0, 0)
+        self.position = position
 
         self.__calibrate = self._read_calibration()
-        self.__configs = self._read_configs()
 
         # Show battery when connecting
         self._show_battery()
@@ -63,115 +70,70 @@ class Cube(object):
             time.sleep(5)
             mac_address = self._read_mac_address()
 
-    def move_towards(self, face):
-        config = self._find_config()
-        if config['Left'] == face:
-            self.change_plane('Left')
-        elif config['Right'] == face:
-            self.change_plane('Right')
-
-        config = self._find_config()
-        if config['Forward'] == face:
-            self.do_action('traverse', 'forward')
-        elif config['Backward'] == face:
-            self.do_action('traverse', 'reverse')
-
     def do_action(self, action, direction):
         """Performs an action until it is successful."""
         command = self.__calibrate[action, direction]
         self.ser.write(command + '\n')
         time.sleep(5)
 
-    def move(self, direction, rpm=None, br=None, t=None):
-        """Move cube in specified direction.
+    def get_orientation(self):
+        self.ser.write('imugravity\n')
 
-        Note that this only works for traversal moves.
+        line = ''
+        while True:
+            try:
+                line = self.ser.readline()
+                if 'Gravity vector (int)' in line and '[' in line and ']' in line:
+                    break
+            except serial.serialutil.SerialException:
+                pass
 
-        :param direction: One of {left, right, forward, backward, up,
-            down}; case insensitive.
-        """
-        forward = 'ia f {0} {1} {2}\n'.format(rpm, br, t)
-        reverse = 'ia r {0} {1} {2}\n'.format(rpm, br, t)
+        s, e = line.index('['), line.index(']')
+        grav = [int(x) for x in line[s+1:e].split()]
 
-        if direction not in ('forward', 'backward'):
-            self.change_plane(direction)
+        thresh = 10
+        planes = [(0, 0, 1), (1, -1, 0), (1, 1, 0)]
 
-        if self.reverse:
-            forward, reverse = reverse, forward
-        if direction is 'backward':
-            forward, reverse = reverse, forward
+        print grav
+        for i, plane in enumerate(planes):
+            angle = utils.angle(plane, grav) / math.pi * 180
+            if angle < thresh:
+                return plane
+            elif angle > 180 - thresh:
+                return -plane
 
-        before, after = {}, {}
+    def change_plane(self, old_plane, new_plane):
+        while new_plane != old_plane:
+            self.ser.write('cp b f 5000 50\n')
+            line = ''
+            while True:
+                try:
+                    line = self.ser.readline()
+                    if 'Failed to change planes' in line or 'Successfully changed planes' in line:
+                        break
+                except serial.serialutil.SerialException:
+                    pass
+            time.sleep(1)
+            old_plane = self.get_orientation()
+            print old_plane
 
-        while before == after:
-            before = self._find_config()
-            self.ser.write(forward)
-            time.sleep(3)
-            after = self._find_config
+    def change_rotation_axis(self, new_axis):
+        if new_axis == self.rotation_axis:
+            return
 
-    def change_plane(self, direction):
-        """Change plane to align with a specified direction.
-
-        :param direction: One of {Left, Right, Top, Bottom}.
-        """
-        forward = 'cp b f 4000 50\n'
-        reverse = 'cp b r 4000 50\n'
-
-        config = self._find_config()
-        if direction is 'Top' or direction is 'Bottom':
-            face = 0
+        # All axes rotate counterclockwise when moving forward
+        if sum(new_axis) < 0:
+            new_axis = (-x for x in new_axis)
+        plane = self.get_orientation()
+        if new_axis == (0, 1, 0):
+            new_plane = (0, 0, 1)
         else:
-            face = config[direction]
-
-        try_num = 0
-        while config['Forward'] != face and config['Backward'] != face:
-            if config['Left'] == face:
-                self.ser.write(forward)
+            if plane == (1, -1, 0):
+                new_plane = (1, 1, 0)
             else:
-                self.ser.write(reverse)
-            time.sleep(15)
-            config = self._find_config()
-            if config is None:
-                config = {'Forward': -1, 'Backward': -1, 'Left': face}
+                new_plane = (1, -1, 0)
 
-            try_num += 1
-
-        print('Final: {0} (tries: {1})'.format(config, try_num))
-
-    def send_message(self, face, message):
-        self.ser.write('fbirled {0}\n'.format(face))
-        self.ser.write('fbtxled {0} 1\n'.format(face))
-        self.ser.write('fbtxcount {0}\n'.format(face))
-        self.ser.write('fbtx {0} {1}\n'.format(face, message))
-        self.ser.write('fbtxled {0}\n'.format(face))
-
-    def read_message(self, face, length):
-        self.ser.write('fbrxen {0} 1\n'.format(face))
-        self.ser.write('fbrx {0} {1}\n'.format(face, length))
-
-        while True:
-            line = self.ser.readline()
-            if 'Read' in line:
-                break
-        msg = self.ser.readline()
-        return msg
-
-    def find_strongest_light_signal(self):
-        """Returns the face number and sensor value of the face with
-        the strongest light stimulation.
-
-        Excludes the Top and Bottom faces.
-        """
-        sensors = self._read_light_sensors()
-        sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
-        face, value = max(sensors.items(), key=operator.itemgetter(1))
-
-        return face, value
-
-    def light_follower(self):
-        while True:
-            face, _ = self.find_strongest_light_signal()
-            move_towards(face)
+        self.change_plane(plane, new_plane)
 
     def _show_battery(self):
         self.ser.write('vbat\n')
@@ -212,24 +174,6 @@ class Cube(object):
         self.ser.flushOutput()
 
         return line.split()[1]
-
-    def _read_configs(self):
-        """Read configuration information from Google Drive.
-        """
-        with open('cube_config.csv', 'rb') as csvfile:
-            cr = csv.reader(csvfile)
-
-            result = []
-            labels = next(cr)
-            for row in cr:
-                config = {}
-                for label, d in zip(labels, row):
-                    config[label] = tuple(int(x) for x in d.strip().split(','))
-                    if len(config[label]) == 1:
-                        config[label] = config[label][0]
-                result.append(config)
-
-        return result
 
     def _read_calibration(self):
         """ Read calibration from Google Drive.
@@ -295,29 +239,20 @@ class Cube(object):
         for face in xrange(1, 7):
             res[face] = self._read_light_sensor(face)
 
-        result = {}
-        config = self._find_config()
-        for k, v in config.items():
-            if k in ('Top', 'Bottom', 'Left', 'Right', 'Forward', 'Backward'):
-                result[k] = res[v]
+        return res
 
-        return result
+    # def receiving(ser):
+    #     buffer_string = ''
+    #     while True:
+    #         buffer_string += ser.read(ser.inWaiting())
+    #         if '\n' in buffer_string:
+    #             data = buffer_string.split('\n')[:-1]
+    #             buffer_string = buffer_string.split('\n')[-1]
 
-    def _find_config(self):
-        c_alpha, c_beta, c_gamma = self._read_imu('c')
-        f_alpha, f_beta, f_gamma = self._read_imu('f')
-
-        MAX_ERROR = 10
-        central_label = 'Central Alignment'
-        face_label = 'Face Alignment'
-        for config in self.__configs:
-            conf_c_alpha, conf_c_beta, conf_c_gamma = config[central_label]
-            conf_f_alpha, conf_f_beta, conf_f_gamma = config[face_label]
-
-            if abs(c_alpha - conf_c_alpha) < MAX_ERROR and \
-               abs(c_beta - conf_c_beta) < MAX_ERROR and \
-               abs(c_gamma - conf_c_gamma) < MAX_ERROR and \
-               abs(f_alpha - conf_f_alpha) < MAX_ERROR and \
-               abs(f_beta - conf_f_beta) < MAX_ERROR and \
-               abs(f_gamma - conf_f_gamma) < MAX_ERROR:
-                return config
+    #             for line in data:
+    #                 if 'Gravity' in line:
+    #                     s, e = line.index('['), line.index(']')
+    #                     self.data['gravity'] = [float(x) for x in line[s+1:e].split()]
+    #                     self.stale['gravity'] = False
+    #                 if 'Angle between gravity vector' in line:
+    #                     self.data['imu_angles'].append()

@@ -33,6 +33,7 @@ class Cube(object):
 
         self.__calibrate = self._read_calibration()
         self.__configs = self._read_configs()
+        self._find_config()
 
         # Show battery when connecting
         self._show_battery()
@@ -64,23 +65,18 @@ class Cube(object):
             mac_address = self._read_mac_address()
 
     def move_towards(self, face):
-        config = self._find_config()
-        if config['Left'] == face:
-            self.change_plane('Left')
-        elif config['Right'] == face:
-            self.change_plane('Right')
-
-        config = self._find_config()
-        if config['Forward'] == face:
+        print 'Moving towards {0}: '.format(face)
+        if face == 'Forward':
             self.do_action('traverse', 'forward')
-        elif config['Backward'] == face:
+        elif face == 'Backward':
             self.do_action('traverse', 'reverse')
+        time.sleep(5)
+        self._find_config()
 
     def do_action(self, action, direction):
         """Performs an action until it is successful."""
         command = self.__calibrate[action, direction]
         self.ser.write(command + '\n')
-        time.sleep(5)
 
     def move(self, direction, rpm=None, br=None, t=None):
         """Move cube in specified direction.
@@ -107,36 +103,35 @@ class Cube(object):
             before = self._find_config()
             self.ser.write(forward)
             time.sleep(3)
-            after = self._find_config
+            after = self._find_config()
 
     def change_plane(self, direction):
         """Change plane to align with a specified direction.
 
         :param direction: One of {Left, Right, Top, Bottom}.
         """
-        forward = 'cp b f 4000 50\n'
-        reverse = 'cp b r 4000 50\n'
+        forward = 'cp b f 5000 50\n'
+        reverse = 'cp b r 5000 50\n'
 
-        config = self._find_config()
         if direction is 'Top' or direction is 'Bottom':
             face = 0
         else:
-            face = config[direction]
+            face = self.config[direction]
 
         try_num = 0
-        while config['Forward'] != face and config['Backward'] != face:
-            if config['Left'] == face:
+        while self.config['Forward'] != face and self.config['Backward'] != face:
+            if self.config['Left'] == face:
                 self.ser.write(forward)
             else:
                 self.ser.write(reverse)
             time.sleep(15)
-            config = self._find_config()
-            if config is None:
-                config = {'Forward': -1, 'Backward': -1, 'Left': face}
+            self._find_config()
+            if self.config is None:
+                self.config = {'Forward': -1, 'Backward': -1, 'Left': face}
 
             try_num += 1
 
-        print('Final: {0} (tries: {1})'.format(config, try_num))
+        print('Final: {0} (tries: {1})'.format(self.config, try_num))
 
     def send_message(self, face, message):
         self.ser.write('fbirled {0}\n'.format(face))
@@ -163,15 +158,22 @@ class Cube(object):
         Excludes the Top and Bottom faces.
         """
         sensors = self._read_light_sensors()
-        sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
+        #sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
         face, value = max(sensors.items(), key=operator.itemgetter(1))
 
         return face, value
 
     def light_follower(self):
-        while True:
-            face, _ = self.find_strongest_light_signal()
-            move_towards(face)
+        sensors = self._read_light_sensors()
+        avg = sum(sensors.values()) / float(len(sensors))
+        faces = [k for k, v in sensors.items() if v > avg and k != 'Top']
+        print sensors, avg, faces
+
+        if faces:
+            face = max(faces, key=lambda x: sensors[x])
+            return face
+        else:
+            return None
 
     def _show_battery(self):
         self.ser.write('vbat\n')
@@ -242,8 +244,8 @@ class Cube(object):
         labels = next(cr)
         for row in cr:
             if row[0] == self.mac_address:
-                direction = row[3].strip()
-                for i in range(4, len(labels)):
+                direction = row[5].strip()
+                for i in range(6, len(labels)):
                     result[labels[i].strip(), direction] = row[i].strip()
 
         return result
@@ -296,8 +298,7 @@ class Cube(object):
             res[face] = self._read_light_sensor(face)
 
         result = {}
-        config = self._find_config()
-        for k, v in config.items():
+        for k, v in self.config.items():
             if k in ('Top', 'Bottom', 'Left', 'Right', 'Forward', 'Backward'):
                 result[k] = res[v]
 
@@ -320,4 +321,5 @@ class Cube(object):
                abs(f_alpha - conf_f_alpha) < MAX_ERROR and \
                abs(f_beta - conf_f_beta) < MAX_ERROR and \
                abs(f_gamma - conf_f_gamma) < MAX_ERROR:
-                return config
+                self.config = config
+                return

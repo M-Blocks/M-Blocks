@@ -1,11 +1,15 @@
 import csv
+import math
 import operator
 import re
 import serial
+import sys
 import time
 import threading
 import urllib2
 
+import MBlocks.utils as utils
+import numpy as np
 
 class NoCubeException(Exception):
     pass
@@ -23,20 +27,28 @@ class Cube(object):
         self.ser = serial.Serial(port, baud, timeout=1)
         self.ser.write('atd\n')
 
-        self.mac_address = self._read_mac_address()
+        try:
+            self.mac_address = self._read_mac_address()
 
-        self.reverse = False
-        self.neighbours = []
+            self.reverse = False
+            self.neighbours = []
 
-        # Forward is the along the positive x-axis
-        self.direction = [1, 0]
+            # Forward is the along the positive x-axis
+            self.direction = [1, 0]
 
-        self.__calibrate = self._read_calibration()
-        self.__configs = self._read_configs()
-        self._find_config()
+            self.__calibrate = self._read_calibration()
+            self.__configs = self._read_configs()
+            self._find_config()
 
-        # Show battery when connecting
-        self._show_battery()
+            # Show battery when connecting
+            self._show_battery()
+        except: 
+            e = sys.exc_info()[0]
+            print e
+            self.ser.write('bldcstop\n')
+            self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+            self.ser.write('blediscon\n')
+            self.ser.close()
 
     def disconnect(self):
         """Disconnect the cube. Also stops the motor and shuts off the lights."""
@@ -67,10 +79,10 @@ class Cube(object):
     def move_towards(self, face):
         print 'Moving towards {0}: '.format(face)
         if face == 'Forward':
-            self.do_action('traverse', 'forward')
+            self.do_action('traverse_foam', 'forward')
         elif face == 'Backward':
-            self.do_action('traverse', 'reverse')
-        time.sleep(5)
+            self.do_action('traverse_foam', 'reverse')
+        time.sleep(6)
         self._find_config()
 
     def do_action(self, action, direction):
@@ -110,8 +122,8 @@ class Cube(object):
 
         :param direction: One of {Left, Right, Top, Bottom}.
         """
-        forward = 'cp b f 5000 50\n'
-        reverse = 'cp b r 5000 50\n'
+        forward = 'cp b f 4000 40\n'
+        reverse = 'cp b r 4000 40\n'
 
         if direction is 'Top' or direction is 'Bottom':
             face = 0
@@ -163,17 +175,18 @@ class Cube(object):
 
         return face, value
 
-    def light_follower(self):
+    def light_follower(self, thresh, ratio):
         sensors = self._read_light_sensors()
-        avg = sum(sensors.values()) / float(len(sensors))
-        faces = [k for k, v in sensors.items() if v > avg and k != 'Top']
-        print sensors, avg, faces
+        non_zero = {k: v for k, v in sensors.items() if v > 0 and k != 'Top'}
+        print non_zero
 
-        if faces:
-            face = max(faces, key=lambda x: sensors[x])
-            return face
+        vals = non_zero.values()
+        max_value = max(non_zero.values())
+        min_value = min(non_zero.values())
+        if float(min_value) / float(max_value) > ratio or max_value < thresh:
+            return None, None
         else:
-            return None
+            return max(non_zero.keys(), key=lambda x: non_zero[x]), max_value
 
     def _show_battery(self):
         self.ser.write('vbat\n')
@@ -257,17 +270,25 @@ class Cube(object):
                 self.ser.write('imugravity\n')
                 while True:
                     line = self.ser.readline()
-                    if 'Active IMU' in line:
+                    if 'Gravity vector (int)' in line:
                         break
-                lines = [self.ser.readline() for i in range(5)]
-                alpha = float(re.findall('\d+.\d+', lines[2])[-1])
-                beta = float(re.findall('\d+.\d+', lines[3])[-1])
-                gamma = float(re.findall('\d+.\d+', lines[4])[-1])
+                s, e = line.index('['), line.index(']')
+                gravity = [int(x) for x in line[s+1:e].split()]
                 break
-            except IndexError:
-                self.restart()
+            except serial.serialutil.SerialException:
+                pass
+        
+        thresh = 10
+        planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])
 
-        return alpha, beta, gamma
+        for i, plane in enumerate(planes):
+            angle = utils.angle(plane, gravity) / math.pi * 180
+            if angle < thresh:
+                return plane
+            elif angle > 180 - thresh:
+                return -plane
+
+        return None
 
     def _read_light_sensor(self, face):
         """Read the light sensor at a face."""
@@ -305,21 +326,16 @@ class Cube(object):
         return result
 
     def _find_config(self):
-        c_alpha, c_beta, c_gamma = self._read_imu('c')
-        f_alpha, f_beta, f_gamma = self._read_imu('f')
+        readings = {}
+        min_light = float('inf')
+        for face in xrange(1, 7):
+            readings[face] = self._read_light_sensor(face)
+            min_light = min(min_light, readings[face])
 
-        MAX_ERROR = 10
+        central_plane = self._read_imu('c')
         central_label = 'Central Alignment'
-        face_label = 'Face Alignment'
         for config in self.__configs:
-            conf_c_alpha, conf_c_beta, conf_c_gamma = config[central_label]
-            conf_f_alpha, conf_f_beta, conf_f_gamma = config[face_label]
-
-            if abs(c_alpha - conf_c_alpha) < MAX_ERROR and \
-               abs(c_beta - conf_c_beta) < MAX_ERROR and \
-               abs(c_gamma - conf_c_gamma) < MAX_ERROR and \
-               abs(f_alpha - conf_f_alpha) < MAX_ERROR and \
-               abs(f_beta - conf_f_beta) < MAX_ERROR and \
-               abs(f_gamma - conf_f_gamma) < MAX_ERROR:
+            bottom = config['Bottom']
+            if np.array_equal(config[central_label], central_plane) and readings[bottom] == min_light:
                 self.config = config
-                return
+                break

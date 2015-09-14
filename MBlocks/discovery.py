@@ -29,14 +29,15 @@ def connect_all():
     for port in ports:
         try:
             cube = Cube(port)
-            print 'Connected to cube'
-            cubes.append(cube)
         except serial.SerialException:
             print 'Port {0} is not available'.format(port)
         except NoCubeException:
             print 'There is no cube on port {0}'.format(port)
         except:
             print 'Something else went wrong for port {0}'.format(port)
+        else:
+            print 'Connected to cube {0}'.format(cube.mac_address)
+            cubes.append(cube)
 
     return cubes
 

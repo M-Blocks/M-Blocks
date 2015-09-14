@@ -42,13 +42,17 @@ class Cube(object):
 
             # Show battery when connecting
             self._show_battery()
+        except NoCubeException:
+            raise
         except: 
             e = sys.exc_info()[0]
             print e
-            self.ser.write('bldcstop\n')
-            self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
-            self.ser.write('blediscon\n')
-            self.ser.close()
+            if self.ser.isOpen():
+                self.ser.write('bldcstop\n')
+                self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+                self.ser.write('blediscon\n')
+                self.ser.close()
+            raise
 
     def disconnect(self):
         """Disconnect the cube. Also stops the motor and shuts off the lights."""

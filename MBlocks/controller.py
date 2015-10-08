@@ -8,6 +8,8 @@ import time
 import threading
 import urllib2
 
+from interruptingcow import timeout
+
 import MBlocks.utils as utils
 import numpy as np
 
@@ -126,8 +128,8 @@ class Cube(object):
 
         :param direction: One of {Left, Right, Top, Bottom}.
         """
-        forward = 'cp b f 4000 40\n'
-        reverse = 'cp b r 4000 40\n'
+        forward = self.__calibrate['change_plane', 'forward']
+        reverse = self.__calibrate['change_plane', 'reverse']
 
         if direction is 'Top' or direction is 'Bottom':
             face = 0
@@ -137,9 +139,9 @@ class Cube(object):
         try_num = 0
         while self.config['Forward'] != face and self.config['Backward'] != face:
             if self.config['Left'] == face:
-                self.ser.write(forward)
-            else:
                 self.ser.write(reverse)
+            else:
+                self.ser.write(forward)
             time.sleep(15)
             self._find_config()
             if self.config is None:
@@ -181,8 +183,19 @@ class Cube(object):
 
     def light_follower(self, thresh, ratio):
         sensors = self._read_light_sensors()
-        non_zero = {k: v for k, v in sensors.items() if v > 0 and k != 'Top'}
+        top_value = sensors['Top']
+        while top_value != max(sensors.values()):
+            self._find_config()
+            sensors = self._read_light_sensors()
+            top_value = sensors['Top']
+
+        bottom_value = sensors['Bottom']
+        non_zero = {k: v for k, v in sensors.items() if v > bottom_value and k != 'Top'}
         print non_zero
+
+        # assume we are connected to another cube
+        if len(non_zero) < 4 or min(non_zero.items()) < 10:
+            return None, None
 
         vals = non_zero.values()
         max_value = max(non_zero.values())
@@ -202,7 +215,7 @@ class Cube(object):
         battery = int(re.findall('\d+', line)[-1])
         if battery >= 3950:
             self.ser.write('fbrgbled g tb 1 2 3 4 5 6\n')
-        elif battery >= 3800:
+        elif battery >= 3600:
             self.ser.write('fbrgbled rg tb 1 2 3 4 5 6\n')
         else:
             self.ser.write('fbrgbled r tb 1 2 3 4 5 6\n')
@@ -268,19 +281,15 @@ class Cube(object):
         return result
 
     def _read_imu(self, sensor):
+        self.ser.write('imuselect {0}\n'.format(sensor))
+        self.ser.write('imugravity\n')
         while True:
-            try:
-                self.ser.write('imuselect {0}\n'.format(sensor))
-                self.ser.write('imugravity\n')
-                while True:
-                    line = self.ser.readline()
-                    if 'Gravity vector (int)' in line:
-                        break
-                s, e = line.index('['), line.index(']')
-                gravity = [int(x) for x in line[s+1:e].split()]
+            line = self.ser.readline()
+            print '{0}: {1}'.format(self.mac_address, line)
+            if 'Gravity vector (int)' in line:
                 break
-            except serial.serialutil.SerialException:
-                pass
+        s, e = line.index('['), line.index(']')
+        gravity = [int(x) for x in line[s+1:e].split()]
         
         thresh = 10
         planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])

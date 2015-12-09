@@ -3,12 +3,11 @@ import math
 import operator
 import re
 import serial
+import string
 import sys
 import time
 import threading
 import urllib2
-
-from interruptingcow import timeout
 
 import MBlocks.utils as utils
 import numpy as np
@@ -85,9 +84,9 @@ class Cube(object):
     def move_towards(self, face):
         print 'Moving towards {0}: '.format(face)
         if face == 'Forward':
-            self.do_action('traverse_foam', 'forward')
+            self.do_action('traverse', 'forward')
         elif face == 'Backward':
-            self.do_action('traverse_foam', 'reverse')
+            self.do_action('traverse', 'reverse')
         time.sleep(6)
         self._find_config()
 
@@ -169,6 +168,24 @@ class Cube(object):
         msg = self.ser.readline()
         return msg
 
+    def bdcastcmd(self, command):
+        self.ser.write('fbirled 0\n')
+        self.ser.write('fbtxled 0\n')
+
+        # TODO
+        m, t = string.lower('1'), int(time.time())
+        message = 'bdcastcmd;{0}+{1};{2}'.format(m, t, command)
+        self.ser.write('fbtx 0 {0}\n'.format(message))
+
+    def sendcmd(self, dest, command):
+        self.ser.write('fbirled 0\n')
+        self.ser.write('fbtxled 0\n')
+
+        # TODO
+        m, t = string.lower('1'), int(time.time())
+        message = 'sendcmd;{0}+{1};{2};{3}'.format(m, t, dest, command)
+        self.ser.write('fbtx 0 {0}\n'.format(message))
+
     def find_strongest_light_signal(self):
         """Returns the face number and sensor value of the face with
         the strongest light stimulation.
@@ -183,18 +200,12 @@ class Cube(object):
 
     def light_follower(self, thresh, ratio):
         sensors = self._read_light_sensors()
-        top_value = sensors['Top']
-        while top_value != max(sensors.values()):
-            self._find_config()
-            sensors = self._read_light_sensors()
-            top_value = sensors['Top']
-
         bottom_value = sensors['Bottom']
-        non_zero = {k: v for k, v in sensors.items() if v > bottom_value and k != 'Top'}
+        non_zero = {k: v for k, v in sensors.items() if v is not None and v > bottom_value and k != 'Top'}
         print non_zero
 
-        # assume we are connected to another cube
-        if len(non_zero) < 4 or min(non_zero.items()) < 10:
+        # assume we are not connected to another cube
+        if min(non_zero.items()) < 10:
             return None, None
 
         vals = non_zero.values()
@@ -285,7 +296,6 @@ class Cube(object):
         self.ser.write('imugravity\n')
         while True:
             line = self.ser.readline()
-            print '{0}: {1}'.format(self.mac_address, line)
             if 'Gravity vector (int)' in line:
                 break
         s, e = line.index('['), line.index(']')
@@ -343,7 +353,8 @@ class Cube(object):
         min_light = float('inf')
         for face in xrange(1, 7):
             readings[face] = self._read_light_sensor(face)
-            min_light = min(min_light, readings[face])
+            if readings[face] is not None:
+                min_light = min(min_light, readings[face])
 
         central_plane = self._read_imu('c')
         central_label = 'Central Alignment'

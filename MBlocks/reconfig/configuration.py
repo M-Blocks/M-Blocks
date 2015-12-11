@@ -6,6 +6,7 @@ from collections import deque
 from operator import mul
 
 import networkx as nx
+import numpy as np
 
 class Config:
     dx = [1, -1, 0, 0, 0, 0]
@@ -16,12 +17,13 @@ class Config:
         if cubes and len(cubes[0]) != 3:
             raise IndexError
 
+        cubes = np.array(cubes)
         # Build the underlying graph
         self._graph = nx.Graph()
         self._graph.add_nodes_from(cubes)
         for cube in cubes:
             for to_add in zip(Config.dx, Config.dy, Config.dz):
-                neighbor = utils.add(cube, to_add)
+                neighbor = cube + to_add
                 if neighbor in cubes:
                     self._graph.add_edge(cube, neighbor)
 
@@ -48,7 +50,7 @@ class Config:
             while queue:
                 ccube = queue.popleft()
                 for to_add in zip(Config.dx, Config.dy, Config.dz):
-                    ncube = utils.add(to_add, ccube)
+                    ncube = to_add + ccube
                     if ncube in visited:
                         continue
                     visited.add(ncube)
@@ -87,7 +89,7 @@ class Config:
                 return False
 
             for c1, c2 in itertools.combinations(neighbors, 2):
-                diff = utils.sub(c1, c2)
+                diff = c1 - c2
                 if abs(diff[0]) == 2 or abs(diff[1]) == 2 or abs(diff[2]) == 2:
                     return False
 
@@ -97,19 +99,19 @@ class Config:
         for cube in boundary:
             neighbors_xy = []
             for dx, dy in zip(Config.dx, Config.dy):
-                ncube = utils.add(cube, (dx, dy, 0))
+                ncube = cube + (dx, dy, 0)
                 if cube != ncube and self._has_cube(ncube):
                     neighbors_xy.append(ncube)
             
             neighbors_xz = []
             for dx, dz in zip(Config.dx, Config.dz):
-                ncube = utils.add(cube, (dx, 0, dz))
+                ncube = cube + (dx, 0, dz)
                 if cube != ncube and self._has_cube(ncube):
                     neighbors_xz.append(ncube)
 
             neighbors_yz = []
             for dy, dz in zip(Config.dy, Config.dz):
-                ncube = utils.add(cube, (0, dy, dz))
+                ncube = cube + (0, dy, dz)
                 if cube != ncube and self._has_cube(ncube):
                     neighbors_yz.append(ncube)
 
@@ -164,7 +166,7 @@ class Config:
 
         result = []
         for to_add in zip(Config.dx, Config.dy, Config.dz):
-            new_pos = utils.add(to_add, cube)
+            new_pos = to_add + cube
             if new_pos in self._graph.nodes():
                 result.append(new_pos)
         return result
@@ -175,7 +177,7 @@ class Config:
         neighbors = self._neighbors(cube)
         result = []
         for to_add in zip(Config.dx, Config.dy, Config.dz):
-            new_pos = utils.add(to_add, cube)
+            new_pos = to_add + cube
             if new_pos not in neighbors:
                 result.append(new_pos)
         return result
@@ -203,45 +205,11 @@ class Config:
         """
         self._remove_cube(cube)
 
-        final_position = utils.add(tail, extend)
+        final_position = tail + extend
         path, moves = self._find_path(cube, final_position)
         self._add_cube(final_position, [tail])
 
         return list(path), final_position
-
-    def _find_path(self, c0, c1):
-        """Find a pivoting path from c0 to c1.
-        """
-        dirs = [(1, 0, 0), (-1, 0, 0),
-                (0, 1, 0), (0, -1, 0),
-                (0, 0, 1), (0, 0, -1)]
-
-        # Do a BFS using pivoting moves to find valid positions
-        prev = {}
-        seen = set([c0])
-        queue = deque([c0])
-        while queue:
-            cube = queue.popleft()
-
-            if cube == c1:
-                break
-            for direction in dirs:
-                next_cube = self._rotate(cube, direction)
-                if next_cube not in seen:
-                    seen.add(next_cube)
-                    queue.append(next_cube)
-                    prev[next_cube] = (cube, direction)
-
-        # Reconstruct path
-        cube = c1
-        path = [c1]
-        moves = []
-        while cube != c0:
-            cube, move = prev[cube]
-            path.append(cube)
-            moves.append(move)
-
-        return reversed(path), reversed(moves)
         
     def _rotate(self, c0, direction):
         """Rotate c0 in a given direction.
@@ -266,15 +234,15 @@ class Config:
             # c9 c8
             i = utils.circshift(i, -axis)
             j = utils.circshift(j, -axis)
-            c1 = utils.add(i, c0)
-            c3 = utils.add(j, c0)
-            c2 = utils.add(utils.add(i, j), c0)                  #(c1[0]+c3[0], c1[1]+c3[1])
-            c6 = utils.add(utils.mult(j, 2), c0)                 #(2*c3[0], 2*c3[1])
-            c7 = utils.add(utils.add(i, utils.mult(j, 2)), c0)   #(c1[0]+2*c3[0], c1[1]+2*c3[1])
-            c5 = utils.add(utils.mult(i, -1), c0)                #(-c1[0], -c1[1])
-            c4 = utils.add(utils.add(j, utils.mult(i, -1)), c0)  #(c3[0]-c1[0], c3[1]-c1[1])
-            c8 = utils.add(utils.mult(j, -1), c0)
-            c9 = utils.add(utils.add(utils.mult(i, -1), utils.mult(j, -1)), c0)
+            c1 = i + c0
+            c3 = j + c0
+            c2 = i + j + c0
+            c6 = 2 * j + c0
+            c7 = i + 2 * j + c0
+            c5 = -i + c0
+            c4 = j - i + c0
+            c8 = -j + c0
+            c9 = -i - j + c0
 
             if not self._has_cube(c1):
                 continue
@@ -302,7 +270,7 @@ class Config:
         for S in reversed(slices):
             # Find a root module
             for cube in S._graph.nodes():
-                neighbor = utils.add(cube, extend)
+                neighbor = cube + extend
                 if neighbor in self._graph.nodes():
                     root = cube
                     break
@@ -327,6 +295,51 @@ class Config:
 
         return moves
         
+
+
+    def find_path(self, start, goal, heuristic=lambda x, y: 0):
+        """Find a pivoting path from start to goal.
+
+        Uses the A* algorithm with a user provided heuristic.
+        """
+        dirs = [(1, 0, 0), (-1, 0, 0),
+                (0, 1, 0), (0, -1, 0),
+                (0, 0, 1), (0, 0, -1)]
+
+        frontier  = PriorityQueue()
+        frontier.put(0, start)        
+        prev = {}
+        cost = {}
+
+        prev[start] = (None, None)
+        cost[start] = 0
+        while not frontier.empty():
+            current = frontier.get()
+            neighbors = [self._rotate(cube, direction) for direction in dirs]
+            for direction, follow in zip(dirs, neighbors):
+                new_cost = cost[current] + 1
+                if follow not in cost or new_cost < cost[follow]:
+                    cost[follow] = new_cost
+                    priority = new_cost + heuristic(goal, follow)
+                    frontier.put(priority, follow)
+                    prev[follow] = (current, direction)
+
+        # Reconstruct path
+        current = goal
+        path = [current]
+        moves = []
+        while current != start:
+            cube, move = prev[current]
+            path.append(current)
+            moves.append(move)
+
+        return reversed(path), reversed(moves)
+        
+    def join(self, other, dist=lambda x, y: np.transpose(x - y) * (x - y)):
+        """Join two configurations together.
+        """
+        pass
+
     def flatten(self):
         """Flatten configuration into a line.
 

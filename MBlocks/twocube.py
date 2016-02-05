@@ -14,3 +14,6 @@ class TwoCubeController(object):
     def advance(self, direction='forward'):
         self.mover.do_action('two_cube_traverse', '{0}'.format(direction))
         self.mover.do_action('two_cube_traverse', '{0}'.format(direction))
+
+
+print 'Hello'

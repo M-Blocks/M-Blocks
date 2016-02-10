@@ -122,29 +122,18 @@ class Cube(object):
             time.sleep(3)
             after = self._find_config()
 
-    def change_plane(self, direction):
-        """Change plane to align with a specified direction.
+    def change_plane(self, alignment):
+        """Change plane to align with a specified alignment.
 
-        :param direction: One of {Left, Right, Top, Bottom}.
+        :param alignment: One of {(0, 0, 1), (1, 1, 0), (1, -1, 0)}
         """
         forward = self.__calibrate['change_plane', 'forward']
-        reverse = self.__calibrate['change_plane', 'reverse']
-
-        if direction is 'Top' or direction is 'Bottom':
-            face = 0
-        else:
-            face = self.config[direction]
 
         try_num = 0
-        while self.config['Forward'] != face and self.config['Backward'] != face:
-            if self.config['Left'] == face:
-                self.ser.write(reverse)
-            else:
-                self.ser.write(forward)
-            time.sleep(15)
+        while self.config['Central Alignment'] != alignment and self.config['Central Alignment'] != (-alignment):
+            self.ser.write(forward)
+            time.sleep(10)
             self._find_config()
-            if self.config is None:
-                self.config = {'Forward': -1, 'Backward': -1, 'Left': face}
 
             try_num += 1
 

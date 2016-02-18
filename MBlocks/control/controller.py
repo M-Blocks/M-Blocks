@@ -9,10 +9,17 @@ import time
 import threading
 import urllib2
 
+from collections import defaultdict
+
 import MBlocks.utils as utils
 import numpy as np
 
+
 class NoCubeException(Exception):
+    pass
+
+
+class TimeoutException(Exception):
     pass
 
 
@@ -29,33 +36,27 @@ class Cube(object):
         self.ser.write('atd\n')
 
         try:
-            self.mac_address = self._read_mac_address()
+            self.config = None
+            self.mac_address = self.read_mac_address()
 
-            self.reverse = False
-            self.neighbours = []
-
-            # Forward is the along the positive x-axis
-            self.direction = [1, 0]
-
+            self._timeout_fn = lambda: None
+            self.__cache = defaultdict(lambda: None)
             self.__calibrate = self._read_calibration()
             self.__configs = self._read_configs()
-            self._find_config()
+            self.find_config()
 
             # Show battery when connecting
             self._show_battery()
         except NoCubeException:
+            self.disconnect()
             raise
         except: 
-            e = sys.exc_info()[0]
-            print e
-            if self.ser.isOpen():
-                self.ser.write('bldcstop\n')
-                self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
-                self.ser.write('blediscon\n')
-                self.ser.close()
+            self.disconnect()
             raise
 
     def disconnect(self):
+        self.__cache = defaultdict(lambda: None)
+        
         """Disconnect the cube. Also stops the motor and shuts off the lights."""
         self.ser.write('bldcstop\n')
         self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
@@ -72,72 +73,75 @@ class Cube(object):
         self.ser.write('atd\n')
         time.sleep(5)
 
-        mac_address = self._read_mac_address()
+        mac_address = self.read_mac_address()
         while mac_address != self.mac_address:
             time.sleep(5)
             self.ser.write('blediscon\n')
             time.sleep(2)
             self.ser.write('atd\n')
             time.sleep(5)
-            mac_address = self._read_mac_address()
-
-    def move_towards(self, face):
-        print 'Moving towards {0}: '.format(face)
-        if face == 'Forward':
-            self.do_action('traverse', 'forward')
-        elif face == 'Backward':
-            self.do_action('traverse', 'reverse')
-        time.sleep(6)
-        self._find_config()
+            mac_address = self.read_mac_address()
 
     def do_action(self, action, direction):
-        """Performs an action until it is successful."""
+        """Attempts to perform an action from the calibration table."""
+        self.__cache['center'] = None
+        self.__cache['face'] = None
+        self.config = None
+
         command = self.__calibrate[action, direction]
         self.ser.write(command + '\n')
 
-    def move(self, direction, rpm=None, br=None, t=None):
-        """Move cube in specified direction.
-
-        Note that this only works for traversal moves.
-
-        :param direction: One of {left, right, forward, backward, up,
-            down}; case insensitive.
-        """
-        forward = 'ia f {0} {1} {2}\n'.format(rpm, br, t)
-        reverse = 'ia r {0} {1} {2}\n'.format(rpm, br, t)
-
-        if direction not in ('forward', 'backward'):
-            self.change_plane(direction)
-
-        if self.reverse:
-            forward, reverse = reverse, forward
-        if direction is 'backward':
-            forward, reverse = reverse, forward
-
-        before, after = {}, {}
-
-        while before == after:
-            before = self._find_config()
-            self.ser.write(forward)
-            time.sleep(3)
-            after = self._find_config()
+        self._timeout_fn = self.do_action
+        self._timeout_args = [action, direction]
+        t = threading.Timer(20.0, self._timeout_handler)
+        t.start()
+        while True:
+            line = self.ser.readline()
+            if 'Successfully' in line or 'Failed' in line:
+                print line
+                break
+            elif 'complete' in line or 'failure' in line:
+                print line
+                break
+        self.ser.flushInput()
+        self.ser.flushOutput()
+        t.cancel()
 
     def change_plane(self, alignment):
         """Change plane to align with a specified alignment.
 
         :param alignment: One of {(0, 0, 1), (1, 1, 0), (1, -1, 0)}
         """
-        forward = self.__calibrate['change_plane', 'forward']
+        planes = [(0, 0, 1), (1, -1, 0), (1, 1, 0)]
+        index = planes.index(alignment)
+        
+        def get_alignment():
+            self.find_config()
+            center = self.config['center']
+            for i, a in enumerate(center):
+                if a == 0:
+                    return i, np.array(planes[i])
+                elif a == 180:
+                    return i, -np.array(planes[i])
 
         try_num = 0
-        while self.config['Central Alignment'] != alignment and self.config['Central Alignment'] != (-alignment):
-            self.ser.write(forward)
-            time.sleep(10)
-            self._find_config()
-
-            try_num += 1
-
+        i, current = get_alignment()
+        while True:
+            if planes[i] == alignment:
+                break
+            if (i + 1) % 3 == index:
+                self.do_action('change_plane', 'forward', sleep=10)
+            else:
+                self.do_action('change_plane', 'reverse', sleep=10)
+            i, current = get_alignment()
+        
         print('Final: {0} (tries: {1})'.format(self.config, try_num))
+
+    def is_conected(self, face):
+        # TODO: find better way to do this, as this does not always work
+        light = self.read_light_sensor(face)                
+        if light == 0:
+            return True
 
     def send_message(self, face, message):
         self.ser.write('fbirled {0}\n'.format(face))
@@ -150,86 +154,34 @@ class Cube(object):
         self.ser.write('fbrxen {0} 1\n'.format(face))
         self.ser.write('fbrx {0} {1}\n'.format(face, length))
 
+        self._timeout_fn = self.read_message
+        self._timeout_args = [face, length]
+        t = threading.Timer(5.0, self._timeout_handler)
+        t.start()
         while True:
             line = self.ser.readline()
             if 'Read' in line:
                 break
         msg = self.ser.readline()
+        self.ser.flushInput()
+        self.ser.flushOutput()
+        t.cancel()
+        
         return msg
 
-    def bdcastcmd(self, command):
-        self.ser.write('fbirled 0\n')
-        self.ser.write('fbtxled 0\n')
-
-        # TODO
-        m, t = string.lower('1'), int(time.time())
-        message = 'bdcastcmd;{0}+{1};{2}'.format(m, t, command)
-        self.ser.write('fbtx 0 {0}\n'.format(message))
-
-    def sendcmd(self, dest, command):
-        self.ser.write('fbirled 0\n')
-        self.ser.write('fbtxled 0\n')
-
-        # TODO
-        m, t = string.lower('1'), int(time.time())
-        message = 'sendcmd;{0}+{1};{2};{3}'.format(m, t, dest, command)
-        self.ser.write('fbtx 0 {0}\n'.format(message))
-
-    def find_strongest_light_signal(self):
-        """Returns the face number and sensor value of the face with
-        the strongest light stimulation.
-
-        Excludes the Top and Bottom faces.
-        """
-        sensors = self._read_light_sensors()
-        #sensors = {k: v for k, v in sensors.items() if k not in ('Top', 'Bottom')}
-        face, value = max(sensors.items(), key=operator.itemgetter(1))
-
-        return face, value
-
-    def light_follower(self, thresh, ratio):
-        sensors = self._read_light_sensors()
-        bottom_value = sensors['Bottom']
-        non_zero = {k: v for k, v in sensors.items() if v is not None and v > bottom_value and k != 'Top'}
-        print non_zero
-
-        # assume we are not connected to another cube
-        if min(non_zero.items()) < 10:
-            return None, None
-
-        vals = non_zero.values()
-        max_value = max(non_zero.values())
-        min_value = min(non_zero.values())
-        if float(min_value) / float(max_value) > ratio or max_value < thresh:
-            return None, None
-        else:
-            return max(non_zero.keys(), key=lambda x: non_zero[x]), max_value
-
-    def _show_battery(self):
-        self.ser.write('vbat\n')
-        while True:
-            line = self.ser.readline()
-            if 'Battery' in line:
-                break
-
-        battery = int(re.findall('\d+', line)[-1])
-        if battery >= 3950:
-            self.ser.write('fbrgbled g tb 1 2 3 4 5 6\n')
-        elif battery >= 3600:
-            self.ser.write('fbrgbled rg tb 1 2 3 4 5 6\n')
-        else:
-            self.ser.write('fbrgbled r tb 1 2 3 4 5 6\n')
-
-        def stop_showing():
-            time.sleep(3)
-            self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
-        threading.Thread(target=stop_showing).start()
-
-    def _read_mac_address(self):
+    def read_mac_address(self):
         # Get MAC address of cube (unique)
         found = False
         line = ''
-        for i in range(10):
+
+        # TODO: ensure callback semantics make sense
+        def aux_fn(): print('Cannot re-execute read_mac_address')
+            
+        self._timeout_fn = aux_fn
+        self._timeout_args = []
+        t = threading.Timer(5.0, self._timeout_handler)
+        t.start()
+        while True:
             try:
                 line = self.ser.readline()
                 if 'CONN' == line[:4]:
@@ -239,11 +191,122 @@ class Cube(object):
                 pass
         if not found:
             raise NoCubeException
-
         self.ser.flushInput()
         self.ser.flushOutput()
+        t.cancel()
 
         return line.split()[1]
+
+    def find_plane(self):
+        grav = self.read_imu('c')
+        
+        thresh = 10
+        planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])
+
+        for i, plane in enumerate(planes):
+            angle = utils.angle(plane, grav) / math.pi * 180
+            if angle < thresh:
+                return plane
+            elif angle > 180 - thresh:
+                return -plane
+
+    def find_angles(self, sensor='c'):
+        grav = self.read_imu(sensor)
+
+        planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])
+        angles = []
+        for i, plane in enumerate(planes):
+            angle = utils.angle(plane, grav) / math.pi * 180
+            angles.append(angle)
+
+        return np.array(angles)
+
+    def read_imu(self, sensor='c'):
+        if sensor == 'c' and self.__cache['center']:
+            return self.__cache['center']
+        if sensor == 'f' and self.__cache['face']:
+            return self.__cache['face']
+        
+        self.ser.write('imuselect {0}\n'.format(sensor))
+        self.ser.write('imugravity\n')
+
+        self._timeout_fn = self.read_imu
+        self._timeout_args = [sensor]
+        t = threading.Timer(5.0, self._timeout_handler)
+        t.start()
+        while True:
+            line = self.ser.readline()
+            if 'Gravity vector (int)' in line:
+                break
+        self.ser.flushInput()
+        self.ser.flushOutput()
+        s, e = line.index('['), line.index(']')
+        gravity = [int(x) for x in line[s+1:e].split()]
+        t.cancel()
+        
+        return gravity
+
+    def read_light_sensor(self, face):
+        """Read the light sensor at a face."""
+        self.ser.write('fbrxen {0} 1\n'.format(face))
+        self.ser.write('fblight {0}\n'.format(face))
+
+        s = 'Faceboard {0} ambient light:'.format(face)
+
+        self._timeout_fn = self.read_light_sensor
+        self._timeout_args = [face]
+        t = threading.Timer(5.0, self._timeout_handler)
+        t.start()
+        while True:
+            line = self.ser.readline()
+            if s in line:
+                break
+        self.ser.write('fbrxen {0} 0\n'.format(face))
+        sensor = line.split(':')[1]
+        try:
+            val = int(sensor.strip())
+        except ValueError:
+            val = None
+        
+        self.ser.flushInput()
+        self.ser.flushOutput()
+        t.cancel()
+
+        return val
+
+    def read_light_sensors(self):
+        """Reads the light sensors at each of the faces and returns a
+        dictionary with results.
+        """
+        res = {}
+        for face in xrange(1, 7):
+            res[face] = self.read_light_sensor(face)
+
+        result = {}
+        for k, v in self.config.items():
+            if k in ('top', 'bottom', 'left', 'right', 'forward', 'reverse'):
+                result[k] = res[v]
+
+        return result
+
+    def find_config(self):
+        if self.config:
+            return
+        
+        readings = {}
+        min_light = float('inf')
+        for face in xrange(1, 7):
+            readings[face] = self.read_light_sensor(face)
+            if readings[face] is not None:
+                min_light = min(min_light, readings[face])
+
+        plane_c = self.find_angles('c')
+        for config in self.__configs:
+            dist_c = np.dot(plane_c - config['center'], plane_c - config['center'])
+            bottom = config['bottom']
+            if  dist_c < 10 and readings[bottom] == min_light:
+                self.config = config
+                break
 
     def _read_configs(self):
         """Read configuration information from Google Drive.
@@ -273,82 +336,41 @@ class Cube(object):
         result = {}
         labels = next(cr)
         for row in cr:
-            if row[0] == self.mac_address:
+            if row[0] == self.mac_address or row[0] == 'DEFAULT':
                 direction = row[5].strip()
                 for i in range(6, len(labels)):
                     result[labels[i].strip(), direction] = row[i].strip()
 
         return result
-
-    def _read_imu(self, sensor):
-        self.ser.write('imuselect {0}\n'.format(sensor))
-        self.ser.write('imugravity\n')
-        while True:
-            line = self.ser.readline()
-            if 'Gravity vector (int)' in line:
-                break
-        s, e = line.index('['), line.index(']')
-        gravity = [int(x) for x in line[s+1:e].split()]
+    
+    def _show_battery(self):
+        self.ser.write('vbat\n')
         
-        thresh = 10
-        planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])
-
-        for i, plane in enumerate(planes):
-            angle = utils.angle(plane, gravity) / math.pi * 180
-            if angle < thresh:
-                return plane
-            elif angle > 180 - thresh:
-                return -plane
-
-        return None
-
-    def _read_light_sensor(self, face):
-        """Read the light sensor at a face."""
-        self.ser.write('fbrxen {0} 1\n'.format(face))
-        self.ser.write('fblight {0}\n'.format(face))
-
-        s = 'Faceboard {0} ambient light:'.format(face)
+        self._timeout_fn = self._show_battery
+        self._timeout_args = []
+        t = threading.Timer(5.0, self._timeout_handler)
+        t.start()
         while True:
             line = self.ser.readline()
-            if s in line:
+            if 'Battery' in line:
                 break
-        self.ser.write('fbrxen {0} 0\n'.format(face))
+        self.ser.flushInput()
+        self.ser.flushOutput()
+        t.cancel()
+        
+        battery = int(re.findall('\d+', line)[-1])
+        if battery >= 3950:
+            self.ser.write('fbrgbled g tb 1 2 3 4 5 6\n')
+        elif battery >= 3600:
+            self.ser.write('fbrgbled rg tb 1 2 3 4 5 6\n')
+        else:
+            self.ser.write('fbrgbled r tb 1 2 3 4 5 6\n')
+        def stop_showing():
+            time.sleep(3)
+            self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+        threading.Thread(target=stop_showing).start()
 
-        sensor = line.split(':')[1]
-        try:
-            val = int(sensor.strip())
-        except ValueError:
-            val = None
-
-        return val
-
-    def _read_light_sensors(self):
-        """Reads the light sensors at each of the faces and returns a
-        dictionary with results.
-        """
-        res = {}
-        for face in xrange(1, 7):
-            res[face] = self._read_light_sensor(face)
-
-        result = {}
-        for k, v in self.config.items():
-            if k in ('Top', 'Bottom', 'Left', 'Right', 'Forward', 'Backward'):
-                result[k] = res[v]
-
-        return result
-
-    def _find_config(self):
-        readings = {}
-        min_light = float('inf')
-        for face in xrange(1, 7):
-            readings[face] = self._read_light_sensor(face)
-            if readings[face] is not None:
-                min_light = min(min_light, readings[face])
-
-        central_plane = self._read_imu('c')
-        central_label = 'Central Alignment'
-        for config in self.__configs:
-            bottom = config['Bottom']
-            if np.array_equal(config[central_label], central_plane) and readings[bottom] == min_light:
-                self.config = config
-                break
+    def _timeout_handler(self):
+        print('Timeout in {0}'.format(self._timeout_fn.__name__))
+        print('Re-executing function {} with args {}'.format(self._timeout_fn.__name__, self._timeout_args))
+        self._timeout_fn(*self._timeout_args)

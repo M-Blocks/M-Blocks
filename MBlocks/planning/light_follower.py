@@ -1,54 +1,45 @@
-from MBlocks.controller import *
+import operator
 
-from multiprocessing.dummy import Pool as ThreadPool 
+from MBlocks.planning.planner import Planner
 
-def move(args):
-    args[0].move_towards(args[1])
+class LatticeLightPlanner(Planner):
+    def __init__(self, bots, thresh=100, ratio=0.7,
+                     traverse='traverse', change: 'change_plane'):
+        super(LatticeLightPlanner, self).__init__(bots)
 
-def change_plane(args):
-    args[0].change_plane(args[1])
+        self._traverse = traverse
+        self._change = change
+        
+        self.thresh = thresh
+        self.ratio = ratio
 
-def light_follower_demo(seed, cubes, thresh=90, ratio=0.7):
-    found = True
+    def next_moves(self):
+        def complete_aux(name):
+            print('Cube {} has reached the destination.'.format(name))
+            
+        moves = []
+        for bot in self.bots:
+            light_values = bot.read_light_sensors()
+            sorted_values = sorted(light_values.items(), key=operator.itemgetter(1), reverse=True)
 
-    for cube in cubes:
-        cube._find_config()
-
-    while True:
-        time.sleep(5)
-        face, max_value = seed.light_follower(thresh, ratio)
-        if face is None:
-            break
-        if face in ('Forward', 'Backward'):
-            seed.move_towards(face)
-        elif face in ('Left', 'Right'):
-            seed.change_plane(face)
-
-    while found:
-        found = False
-        found_mover = False
-
-        movers = []
-        changers = []
-        best_mover, best_value, best_dir = None, 0, None
-        for cube in cubes:
-            face, max_value = cube.light_follower(0, 1)
-            if face is None:
+            if sorted_values[0][1] > thresh:
+                moves.append([complete_aux, bot.mac_address])
                 continue
-            if face in ('Forward', 'Backward'):
-                movers.append((cube, face))
-                if best_value < max_value:
-                    best_mover, best_value, best_dir = cube, max_value, face
-            elif face in ('Left', 'Right'):
-                changers.append((cube, face))
-            found = True
+            
+            for face, val in sorted_values:
+                if face == 'top' or face == 'bottom':
+                    continue
+                if face == 'forward' or face == 'reverse':
+                    moves.append([bot.do_action, self._traverse, face])
+                else:
+                    center_d = tuple(bot.find_plane())
+                    if center_d == (1, 1, 0) or center_d == (-1, -1, 0):
+                        new_plane = (1, -1, 0)
+                    elif center_d == (1, -1, 0) or center_d == (-1, 1, 0):
+                        new_plane = (1, 1, 0)
+                    else:
+                        new_plane = (1, 1, 0)
+                        
+                    moves.append([bot.change_plane, new_plane])
 
-        # if best_mover is not None:
-            # movers = [(best_mover, best_dir)]
-        if movers or changers:
-            pool = ThreadPool(len(cubes))
-            pool.map_async(move, movers)
-            pool.map_async(change_plane, changers)
-
-            pool.close()
-            pool.join()
+        return moves

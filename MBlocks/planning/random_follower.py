@@ -17,9 +17,16 @@ class RandomLightPlanner(Planner):
         moves = []
         for bot in self.bots:
             lights = bot.read_light_sensors()
+            center = tuple(bot.find_plane())
 
-            ratio = min(lights['forward']/float(lights['reverse']), lights['reverse']/float(lights['forward']))
-            if ratio > self.ratio:
+            if lights['forward'] > 0 and lights['reverse'] > 0:
+                ratio = min(lights['forward']/float(lights['reverse']), lights['reverse']/float(lights['forward']))
+            else:
+                ratio = 0.0
+
+            if center == (0, 0, 1) or center == (0, 0, -1):
+                moves.append(self.find_move(bot))
+            elif ratio > self.ratio:
                 # if forward and reverse are almost the same, do random move
                 moves.append(self.find_move(bot))
             elif lights['forward'] > lights['reverse']:
@@ -30,7 +37,7 @@ class RandomLightPlanner(Planner):
         return moves
 
     def find_move(self, bot):
-        center = tuple(bot.read_imu('c'))
+        center = tuple(bot.find_plane())
         if center == (0, 0, 1) or center == (0, 0, -1):
             return [bot.ser.write, 'bldcaccel f 10000 50\n']
         else:

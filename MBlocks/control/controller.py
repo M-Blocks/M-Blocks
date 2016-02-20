@@ -212,6 +212,8 @@ class Cube(object):
 
     def find_angles(self, sensor='c'):
         grav = self.read_imu(sensor)
+        if grav == []:
+            return []
 
         planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])
         angles = []
@@ -288,6 +290,7 @@ class Cube(object):
     def find_config(self):
         plane_c = self.find_angles('c')
         plane_f = self.find_angles('f')
+        print plane_c, plane_f
 
         if plane_f != []:
             for config in self.__configs:
@@ -300,7 +303,7 @@ class Cube(object):
             readings = [self.read_light_sensor(f) for f in range(1, 7)]
             min_light = min(readings)
             for config in self.__configs:
-                dist_c = np.dot(plane_c - config['center'], plane_c - config['center'])
+                dist_c = np.sqrt(np.dot(plane_c - config['center'], plane_c - config['center']))
                 if dist_c < 10 and readings[config['bottom'] - 1] == min_light:
                     self.config = config
                     break

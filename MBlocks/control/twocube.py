@@ -32,6 +32,9 @@ class TwoCubeController(object):
             else:
                 self.driver.change_plane((1, 1, 0))
 
+        self.config_driver = self.driver.config
+        self.config_steer = self.steer.config
+
     def drive(self):
         """Drive the cube towards the light source.
 
@@ -43,12 +46,17 @@ class TwoCubeController(object):
         """ 
         direction = None
         while direction != 'forward' and direction != 'reverse':
-            light_values = self.driver.read_light_sensors()
+            lvalues_steer = self.driver.read_light_sensors(self.config_steer)
+            lvalues_driver = self.driver.read_light_sensors(self.config_driver)
+            
             sorted_values = sorted(light_values.items(), key=operator.itemgetter(1), reverse=True)
             for k, v in sorted_values:
                 if k == 'top' or k == 'bottom':
                     continue
-                if k == 'forward':
+
+                if lvalues_steer['left'] > v or lvalues_steer['right'] > v:
+                    self.steer_cubes()
+                elif k == 'forward':
                     direction = 'forward'
                 elif k == 'reverse':
                     direction = 'reverse'
@@ -65,13 +73,32 @@ class TwoCubeController(object):
             # only one move successfully completed
             self.driver.do_action('two_cube_traverse', '{}'.format(direction))
 
+        self._flip_configs()
+
     def steer_cubes(self, sleep=4):
-        # steer towards the larger light value
-        light_values = self.steer.read_light_sensors()
-        if light_values['forward'] > light_values['reverse']:
-            self.steer.ser.write('bldcspeed f 8000\n')
-        else:
-            self.steer.ser.write('bldcspeed r 8000\n')
+        # find whether direction is clockwise or counterclockwise to center ring
+        light_values = [self.steer.read_light_sensor(face) for face in self.steer['ring']]
+        min_val = min(light_values)
+        id = light_values.index(min_val)
+        
+        if light_values[id - 1] > light_values[(id + 1) % 4]:  # counterclockwise motion
+            self.steer.write('bldcspeed r 8000\n')
+        else:                                                  # clockwise motion
+            self.steer.write('bldcspeed f 8000\n')
         time.sleep(sleep)
         self.steer.ser.write('bldcstop b\n')
 
+    def _flip_configs():
+        config_d = self.config_driver
+        config_d['forward'] = self.config_driver['reverse']
+        config_d['reverse'] = self.config_driver['forward']
+        config_d['top'] = self.config_driver['bottom']
+        config_d['bottom'] = self.config_driver['top']
+        self.config_driver = config_d
+        
+        config_s = self.config_steer
+        config_s['left'] = self.config_steer['right']
+        config_s['right'] = self.config_steer['left']
+        config_s['top'] = self.config_steer['bottom']
+        config_s['bottom'] = self.config_steer['top']
+        self.config_steer = config_s

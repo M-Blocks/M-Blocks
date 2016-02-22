@@ -7,6 +7,7 @@ import string
 import sys
 import time
 import urllib2
+import threading
 
 from collections import defaultdict
 
@@ -35,6 +36,8 @@ class Cube(object):
         self.ser.write('atd\n')
 
         try:
+            self.mutex = threading.Lock()
+            
             self.config = None
             self.mac_address = self.read_mac_address()
             self.connected = True
@@ -45,8 +48,7 @@ class Cube(object):
 
             self.ser.write('fbrxen 0 1\n')
             self.find_config()
-
-            # Show battery when connecting
+            self._find_neighbors()
         except NoCubeException:
             self.disconnect()
             raise
@@ -85,22 +87,26 @@ class Cube(object):
         self.__cache['center'] = None
         self.__cache['face'] = None
 
-        command = self.__calibrate[action, direction]
-        self.ser.write(command + '\n')
+        self.mutex.acquire()
+        try:
+            command = self.__calibrate[action, direction]
+            self.ser.write(command + '\n')
 
-        timeout = time.time() + 20.0
-        while True:
-            if time.time() > timeout:
-                return
-            line = self.ser.readline()
-            if 'Successfully' in line or 'Failed' in line:
-                print line
-                break
-            elif 'complete' in line or 'failure' in line:
-                print line
-                break
-        self.ser.flushInput()
-        self.ser.flushOutput()
+            timeout = time.time() + 20.0
+            while True:
+                if time.time() > timeout:
+                    return
+                line = self.ser.readline()
+                if 'Successfully' in line or 'Failed' in line:
+                    print line
+                    break
+                elif 'complete' in line or 'failure' in line:
+                    print line
+                    break
+            self.ser.flushInput()
+            self.ser.flushOutput()
+        finally:
+            self.mutex.release()
 
     def change_plane(self, alignment):
         """Change plane to align with a specified alignment.
@@ -139,64 +145,74 @@ class Cube(object):
             return True
 
     def send_message(self, face, message):
-        self.ser.write('fbirled {}\n'.format(face))
-        self.ser.write('fbtxled {} 1\n'.format(face))
-        self.ser.write('fbtx {} {}\n'.format(face, message))
-
+        self.mutex.acquire()
+        try:
+            self.ser.write('fbirled {}\n'.format(face))
+            self.ser.write('fbtxled {} 1\n'.format(face))
+            self.ser.write('fbtx {} {}\n'.format(face, message))
+        finally:
+            self.mutex.release()
+            
     def read_message_length(self, face):
-        self.ser.write('fbrxcount {}\n'.format(face))
+        self.mutex.acquire()
+        try:
+            self.ser.write('fbrxcount {}\n'.format(face))
 
-        timeout = time.time() + 5.0
-        while True:
-            if time.time() > timeout:
-                return 0
-            line = self.ser.readline()
-            if 'consumed' in line:
-                cnt = line.split(':')[1]
-                break
-        self.ser.flushInput()
-        self.ser.flushOutput()
+            timeout = time.time() + 5.0
+            while True:
+                if time.time() > timeout:
+                    return 0
+                line = self.ser.readline()
+                if 'consumed' in line:
+                    cnt = line.split(':')[1]
+                    break
+            self.ser.flushInput()
+            self.ser.flushOutput()
 
-        return int(cnt)
+            return int(cnt)
+        finally:
+            self.mutex.release()
     
     def read_message(self, face, length):
-        self.ser.write('fbrx {} {}\n'.format(face, length))
+        self.mutex.acquire()
+        try:
+            self.ser.write('fbrx {} {}\n'.format(face, length))
 
-        timeout = time.time() + 5.0
-        while True:
-            if time.time() > timeout:
-                return ''
-            line = self.ser.readline()
-            if 'Read' in line:
-                break
-        msg = self.ser.readline()
-        self.ser.flushInput()
-        self.ser.flushOutput()
+            timeout = time.time() + 5.0
+            while True:
+                if time.time() > timeout:
+                    return ''
+                line = self.ser.readline()
+                if 'Read' in line:
+                    break
+            msg = self.ser.readline()
+            self.ser.flushInput()
+            self.ser.flushOutput()
         
-        return msg
+            return msg
+        finally:
+            self.mutex.release()
 
     def read_mac_address(self):
         # Get MAC address of cube (unique)
-        found = False
-        line = ''
+        self.mutex.acquire()
+        try:
+            found = False
+            line = ''
 
-        timeout = time.time() + 5.0
-        while True:
-            if time.time() > timeout:
-                return 'UNKNOWN'
-            try:
+            timeout = time.time() + 5.0
+            while True:
+                if time.time() > timeout:
+                    return 'UNKNOWN'
                 line = self.ser.readline()
                 if 'CONN' == line[:4]:
-                    found = True
                     break
-            except serial.serialutil.SerialException:
-                pass
-        if not found:
-            raise NoCubeException
-        self.ser.flushInput()
-        self.ser.flushOutput()
+            self.ser.flushInput()
+            self.ser.flushOutput()
 
-        return ''.join(line.split()[1].split(':'))
+            return ''.join(line.split()[1].split(':'))
+        finally:
+            self.mutex.release()
 
     def find_plane(self):
         grav = self.read_imu('c')
@@ -228,60 +244,71 @@ class Cube(object):
             return self.__cache['center']
         if sensor == 'f' and self.__cache['face']:
             return self.__cache['face']
-        
-        self.ser.write('imuselect {0}\n'.format(sensor))
-        self.ser.write('imugravity\n')
 
-        timeout = time.time() + 5.0
-        while True:
-            if time.time() > timeout:
-                return []
-            line = self.ser.readline()
-            if 'Gravity vector (int)' in line:
-                break
-        self.ser.flushInput()
-        self.ser.flushOutput()
-        s, e = line.index('['), line.index(']')
-        gravity = [int(x) for x in line[s+1:e].split()]
+        self.mutex.acquire()
+        try:
+            self.ser.write('imuselect {0}\n'.format(sensor))
+            self.ser.write('imugravity\n')
+
+            timeout = time.time() + 5.0
+            while True:
+                if time.time() > timeout:
+                    return []
+                line = self.ser.readline()
+                if 'Gravity vector (int)' in line:
+                    break
+            
+            self.ser.flushInput()
+            self.ser.flushOutput()
+            s, e = line.index('['), line.index(']')
+            gravity = [int(x) for x in line[s+1:e].split()]
         
-        return gravity
+            return gravity
+        finally:
+            self.mutex.release()
 
     def read_light_sensor(self, face):
         """Read the light sensor at a face."""
-        self.ser.write('fblight {0}\n'.format(face))
-
-        s = 'Faceboard {0} ambient light:'.format(face)
-
-        timeout = time.time() + 5.0
-        while True:
-            if time.time() > timeout:
-                return self._timeout_handler(0)
-            line = self.ser.readline()
-            if s in line:
-                break
-
-        sensor = line.split(':')[1]
+        self.mutex.acquire()
         try:
-            val = int(sensor.strip())
-        except ValueError:
-            val = None
+            self.ser.write('fblight {0}\n'.format(face))
+
+            s = 'Faceboard {0} ambient light:'.format(face)
+
+            timeout = time.time() + 5.0
+            while True:
+                if time.time() > timeout:
+                    return self._timeout_handler(0)
+                line = self.ser.readline()
+                if s in line:
+                    break
+
+            sensor = line.split(':')[1]
+            try:
+                val = int(sensor.strip())
+            except ValueError:
+                val = None
         
-        self.ser.flushInput()
-        self.ser.flushOutput()
+            self.ser.flushInput()
+            self.ser.flushOutput()
 
-        return val
+            return val
+        finally:
+            self.mutex.release()
 
-    def read_light_sensors(self):
+    def read_light_sensors(self, config=None):
         """Reads the light sensors at each of the faces and returns a
         dictionary with results.
         """
-        self.find_config()
+        if config is None:
+            self.find_config()
+            config = self.config
         
         res = {}
         for face in xrange(1, 7):
             res[face] = self.read_light_sensor(face)
         result = {}
-        for k, v in self.config.items():
+        for k, v in config.items():
             if k in ('top', 'bottom', 'left', 'right', 'forward', 'reverse'):
                 result[k] = res[v]
 
@@ -294,8 +321,8 @@ class Cube(object):
 
         if plane_f != []:
             for config in self.__configs:
-                dist_c = np.dot(plane_c - config['center'], plane_c - config['center'])
-                dist_f = np.dot(plane_f - config['face'], plane_f - config['face'])
+                dist_c = np.sqrt(np.dot(plane_c - config['center'], plane_c - config['center']))
+                dist_f = np.sqrt(np.dot(plane_f - config['face'], plane_f - config['face']))
                 if  dist_c < 10 and dist_f < 10:
                     self.config = config
                     break
@@ -342,3 +369,10 @@ class Cube(object):
                     result[labels[i].strip(), direction] = row[i].strip()
 
         return result
+
+    def _find_neighbors(self):
+        self.mutex.acquire()
+        try:
+            threading.Timer(10, self._find_neighbors).start()
+        finally:
+            self.mutex.release()

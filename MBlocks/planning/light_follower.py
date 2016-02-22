@@ -4,7 +4,7 @@ from MBlocks.planning.planner import Planner
 
 class LatticeLightPlanner(Planner):
     def __init__(self, bots, thresh=100, ratio=0.7,
-                     traverse='traverse', change: 'change_plane'):
+                     traverse='traverse', change='change_plane'):
         super(LatticeLightPlanner, self).__init__(bots)
 
         self._traverse = traverse

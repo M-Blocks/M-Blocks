@@ -24,7 +24,7 @@ class TimeoutException(Exception):
 
 
 class Cube(object):
-    def __init__(self, port, baud=115200):
+    def __init__(self, port, mac_address=None, baud=115200, reset=False):
         """Connect to a serial port at a given baud rate.
 
         :param port: Port number to connect to.
@@ -33,22 +33,31 @@ class Cube(object):
         :type baud: int.
         """
         self.ser = serial.Serial(port, baud, timeout=1)
-        self.ser.write('atd\n')
+        if mac_address:
+            self.ser.write('atd {} 01\n'.format(mac_address.translate(None, ':')))
+        else:
+            self.ser.write('atd\n')
 
         try:
             self.mutex = threading.Lock()
-            
+
+            self.neighbors = {}
+            self.potential_neighbors = set()
             self.config = None
-            self.mac_address = self.read_mac_address()
             self.connected = True
 
+            if mac_address:
+                self.mac_address = mac_address
+            else:
+                self.mac_address = self.read_mac_address()                
+
+            self.__reset = reset
             self.__cache = defaultdict(lambda: None)
             self.__calibrate = self._read_calibration()
             self.__configs = self._read_configs()
 
-            self.ser.write('fbrxen 0 1\n')
             self.find_config()
-            self._find_neighbors()
+            # self._find_neighbors()
         except NoCubeException:
             self.disconnect()
             raise
@@ -66,20 +75,16 @@ class Cube(object):
         self.ser.write('blediscon\n')
         self.ser.close()
 
-    def restart(self):
+    def restart(self, sensor='c'):
         """Reinitializes the IMU units."""
-        self.ser.write('imuinit\n')
+        self.ser.write('imuinit {}\n'.format(sensor))
         time.sleep(5)
         self.ser.write('atd\n')
-        time.sleep(5)
-
         mac_address = self.read_mac_address()
         while mac_address != self.mac_address:
-            time.sleep(5)
             self.ser.write('blediscon\n')
             time.sleep(2)
             self.ser.write('atd\n')
-            time.sleep(5)
             mac_address = self.read_mac_address()
 
     def do_action(self, action, direction):
@@ -118,7 +123,7 @@ class Cube(object):
         
         def get_alignment():
             plane = self.find_plane()
-            if plane is None:
+            if plane is None or plane == []:
                 return 0, []
             for i, p in enumerate(planes):
                 if p == tuple(plane) or p == tuple(-plane):
@@ -216,6 +221,8 @@ class Cube(object):
 
     def find_plane(self):
         grav = self.read_imu('c')
+        if grav == []:
+            return []
         
         thresh = 10
         planes = np.array([(0, 0, 1), (1, -1, 0), (1, 1, 0)])
@@ -225,6 +232,8 @@ class Cube(object):
                 return plane
             elif angle > 180 - thresh:
                 return -plane
+
+        return []
 
     def find_angles(self, sensor='c'):
         grav = self.read_imu(sensor)
@@ -271,6 +280,7 @@ class Cube(object):
         """Read the light sensor at a face."""
         self.mutex.acquire()
         try:
+            self.ser.write('fbrxen 0 1\n')
             self.ser.write('fblight {0}\n'.format(face))
 
             s = 'Faceboard {0} ambient light:'.format(face)
@@ -278,7 +288,7 @@ class Cube(object):
             timeout = time.time() + 5.0
             while True:
                 if time.time() > timeout:
-                    return self._timeout_handler(0)
+                    return -1
                 line = self.ser.readline()
                 if s in line:
                     break
@@ -319,6 +329,10 @@ class Cube(object):
         plane_f = self.find_angles('f')
         print plane_c, plane_f
 
+        while plane_f == [] and self.__reset:
+            self.restart('f')
+            plane_f = self.find_angles('f')
+            
         if plane_f != []:
             for config in self.__configs:
                 dist_c = np.sqrt(np.dot(plane_c - config['center'], plane_c - config['center']))
@@ -371,8 +385,105 @@ class Cube(object):
         return result
 
     def _find_neighbors(self):
+        if not self.connected:
+            return
+
+        msg = '#DISCOV;' + self.mac_address + '#'
+        msg += msg
+        
         self.mutex.acquire()
         try:
-            threading.Timer(10, self._find_neighbors).start()
+            light_values = [(face, self._read_light_sensor_non_blocking(face)) for face in range(1, 7)]
+            for f, v in light_values:
+                if v > 1 and f in self.potential_neighbors:
+                    print('Loss on face {}'.format(f))
+                    self.potential_neighbors.remove(f)
+                    if f in self.neighbors:
+                        del self.neighbors[f]
+
+            for f in self.potential_neighbors:
+                rx_length = self._read_message_length_non_blocking(f)
+                if rx_length > len(msg):
+                    msgs = self._read_message_non_blocking(f, rx_length)
+                    ms = [m for m in msgs.split('#') if m]
+                    if ms and len(ms[0]) > 1:
+                        mac = ms[0].split(';')[1]
+                        print mac
+                        if mac != self.mac_address.lower() and len(mac) == 12:
+                            print('Cube {} on face {}'.format(mac, f))
+                            self.ser.write('fbrgbled g tb 1 2 3 4 5 6\n')
+                            self.neighbors[f] = mac
+
+            filtered = [(f, v) for (f, v) in light_values if v <= 1 and f not in self.potential_neighbors]
+            for f, v in filtered:
+                print('Detection on face {}'.format(f))
+                self.potential_neighbors.add(f)
+                self._send_message_non_blocking(f, msg)
+
+            threading.Timer(5, self._find_neighbors).start()
+        except:
+            print('Exception in _find_neighbors')
         finally:
             self.mutex.release()
+
+    def _send_message_non_blocking(self, face, message):
+        self.ser.write('fbirled {}\n'.format(face))
+        self.ser.write('fbtxled {} 1\n'.format(face))
+        self.ser.write('fbtx {} {}\n'.format(face, message))
+
+    def _read_message_length_non_blocking(self, face):
+        self.ser.write('fbrxcount {}\n'.format(face))
+
+        timeout = time.time() + 5.0
+        while True:
+            if time.time() > timeout:
+                return 0
+            line = self.ser.readline()
+            if 'consumed' in line:
+                cnt = line.split(':')[1]
+                break
+        self.ser.flushInput()
+        self.ser.flushOutput()
+
+        return int(cnt)
+
+    def _read_message_non_blocking(self, face, length):
+        self.ser.write('fbrx {} {}\n'.format(face, length))
+
+        timeout = time.time() + 5.0
+        while True:
+            if time.time() > timeout:
+                return ''
+            line = self.ser.readline()
+            if 'Read' in line:
+                break
+        msg = self.ser.readline()
+        self.ser.flushInput()
+        self.ser.flushOutput()
+    
+        return msg
+            
+    def _read_light_sensor_non_blocking(self, face):
+        self.ser.write('fbrxen 0 1\n')
+        self.ser.write('fblight {0}\n'.format(face))
+        
+        s = 'Faceboard {0} ambient light:'.format(face)
+        
+        timeout = time.time() + 5.0
+        while True:
+            if time.time() > timeout:
+                return -1
+            line = self.ser.readline()
+            if s in line:
+                break
+
+        sensor = line.split(':')[1]
+        try:
+            val = int(sensor.strip())
+        except ValueError:
+            val = None
+        
+        self.ser.flushInput()
+        self.ser.flushOutput()
+
+        return val

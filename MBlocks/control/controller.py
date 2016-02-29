@@ -56,7 +56,15 @@ class Cube(object):
             self.__calibrate = self._read_calibration()
             self.__configs = self._read_configs()
 
+            # Timers
+            self.__timer_light = None
+            self.__timer_neigh = None
+
             self.find_config()
+
+            self._best_face = None
+            self._best_light()
+
             # self._find_neighbors()
         except NoCubeException:
             self.disconnect()
@@ -72,6 +80,13 @@ class Cube(object):
         """Disconnect the cube. Also stops the motor and shuts off the lights."""
         if not self.ser.isOpen():
             self.ser.open()
+
+        if self.__timer_light:
+            self.__timer_light.cancel()
+        if self.__timer_neigh:
+            self.__timer_neigh.cancel()
+            
+        self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
         self.ser.write('blediscon\n')
         self.ser.close()
 
@@ -79,13 +94,7 @@ class Cube(object):
         """Reinitializes the IMU units."""
         self.ser.write('imuinit {}\n'.format(sensor))
         time.sleep(5)
-        self.ser.write('atd\n')
-        mac_address = self.read_mac_address()
-        while mac_address != self.mac_address:
-            self.ser.write('blediscon\n')
-            time.sleep(2)
-            self.ser.write('atd\n')
-            mac_address = self.read_mac_address()
+        self.ser.write('atd {} 01\n'.format(self.mac_address))
 
     def do_action(self, action, direction):
         """Attempts to perform an action from the calibration table."""
@@ -215,7 +224,7 @@ class Cube(object):
             self.ser.flushInput()
             self.ser.flushOutput()
 
-            return ''.join(line.split()[1].split(':'))
+            return line.split()[1].translate(None, ':').lower()
         finally:
             self.mutex.release()
 
@@ -377,13 +386,35 @@ class Cube(object):
         result = {}
         labels = next(cr)
         for row in cr:
-            if row[0] == self.mac_address or row[0] == 'DEFAULT':
+            mac_address = row[0].translate(None, ':').lower()
+            if mac_address == self.mac_address or row[0] == 'DEFAULT':
                 direction = row[5].strip()
                 for i in range(6, len(labels)):
                     result[labels[i].strip(), direction] = row[i].strip()
 
         return result
 
+    def _best_light(self):
+        if not self.connected:
+            return
+
+        self.mutex.acquire()
+        try:
+            light_values = [(face, self._read_light_sensor_non_blocking(face)) for face in range(1, 7)]
+            best = max(light_values, key=operator.itemgetter(1))
+            best_face = best[0]
+
+            if self._best_face and self._best_face != best_face:
+                self.ser.write('fbrgbled off tb {}\n'.format(self._best_face))
+            if self._best_face != best_face:
+                self.ser.write('fbrgbled g tb {}\n'.format(best_face))
+            self._best_face = best_face
+
+            self.__timer_light = threading.Timer(0.5, self._best_light)
+            self.__timer_light.start()
+        finally:
+            self.mutex.release()
+    
     def _find_neighbors(self):
         if not self.connected:
             return
@@ -408,7 +439,6 @@ class Cube(object):
                     ms = [m for m in msgs.split('#') if m]
                     if ms and len(ms[0]) > 1:
                         mac = ms[0].split(';')[1]
-                        print mac
                         if mac != self.mac_address.lower() and len(mac) == 12:
                             print('Cube {} on face {}'.format(mac, f))
                             self.ser.write('fbrgbled g tb 1 2 3 4 5 6\n')
@@ -420,7 +450,8 @@ class Cube(object):
                 self.potential_neighbors.add(f)
                 self._send_message_non_blocking(f, msg)
 
-            threading.Timer(5, self._find_neighbors).start()
+            self.__timer_neigh = threading.Timer(5, self._find_neighbors)
+            self.__timer_neigh.start()
         except:
             print('Exception in _find_neighbors')
         finally:

@@ -48,29 +48,28 @@ class TwoCubeController(object):
         """ 
         direction = None
         while direction != 'forward' and direction != 'reverse':
-            lvalues_steer = self.steer.read_light_sensors()
-            lvalues_driver = self.driver.read_light_sensors()
+            sensor_steer = self.steer.read_light_sensors()
+            sensor_driver = self.driver.read_light_sensors()
 
-            sorted_steer = sorted(lvalues_steer.items(), key=operator.itemgetter(1), reverse=True)
-            if sorted_steer[0][0] == 'top':
-                max_steer = sorted_steer[1][1]
+            lvalues_steer = [(f, v) for (f, v) in sensor_steer.items() if f != 'top' and f != 'bottom']
+            lvalues_driver = [(f, v) for (f, v) in sensor_driver.items() if f != 'top' and f != 'bottom']
+
+            sorted_steer = sorted(lvalues_steer, key=operator.itemgetter(1), reverse=True)
+            sorted_driver = sorted(lvalues_driver, key=operator.itemgetter(1), reverse=True)
+
+            flip = {'forward': 'reverse', 'reverse': 'forward', 'left': 'right', 'right': 'left'}
+            face_steer = flip[sorted_steer[-1][0]]
+            val_steer = sensor_steer[face_steer]
+            val_driver = max(sensor_driver['left'], sensor_driver['right'])
+            print face_steer, val_steer
+            print val_driver
+
+            if val_steer == sorted_steer[0][1] or val_driver == sorted_driver[0][1]:
+                self.steer_cubes()
+            elif sensor_driver['forward'] > sensor_driver['reverse']:
+                direction = 'forward'
             else:
-                max_steer = sorted_steer[0][1]
-            
-            sorted_values = sorted(lvalues_driver.items(), key=operator.itemgetter(1), reverse=True)
-            for k, v in sorted_values:
-                if k == 'top' or k == 'bottom':
-                    continue
-
-                if self.ratio * max_steer > v:
-                    self.steer_cubes()
-                elif k == 'forward':
-                    direction = 'forward'
-                elif k == 'reverse':
-                    direction = 'reverse'
-                else:
-                    self.steer_cubes()
-                break
+                direction = 'reverse'
 
         self.driver.do_action('two_cube_traverse', direction)
         self.driver.do_action('two_cube_traverse', direction)
@@ -99,8 +98,8 @@ class TwoCubeController(object):
         id = light_values.index(min_val)
         
         if light_values[id - 1] > light_values[(id + 1) % 4]:  # counterclockwise motion
-            self.steer.ser.write('bldcspeed r 8000\n')
+            self.steer.ser.write('bldcspeed r 6000\n')
         else:                                                  # clockwise motion
-            self.steer.ser.write('bldcspeed f 8000\n')
+            self.steer.ser.write('bldcspeed f 6000\n')
         time.sleep(sleep)
         self.steer.ser.write('bldcstop b\n')

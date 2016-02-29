@@ -384,6 +384,9 @@ class Cube(object):
 
         return result
 
+    def _refresh_calibration(self):
+        self.__calibrate = self._read_calibration()
+
     def _find_neighbors(self):
         if not self.connected:
             return

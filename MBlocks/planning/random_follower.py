@@ -5,8 +5,9 @@ from multiprocessing.dummy import Pool as ThreadPool
 
 class RandomLightPlanner(Planner):
     def __init__(self, bots, thresh=100, ratio=0.5,
-                     traverse='traverse'):
-        super(RandomLightPlanner, self).__init__(bots)
+                     traverse='traverse',
+                     stop_fn=None):
+        super(RandomLightPlanner, self).__init__(bots, stop_fn)
 
         self.thresh = thresh
         self.ratio = ratio
@@ -16,14 +17,16 @@ class RandomLightPlanner(Planner):
 
     def next_moves(self):
         pool = ThreadPool()
-        pool.map(self._find_move, self.bots)
+        return pool.map(self._find_move, self.bots)
 
-        return moves
-
-    def _find_moves(self, bot):
+    def _find_move(self, bot):
+        def converged(s):
+            print(s)
+        if stop_fn and stop_fn(bot):
+            return [converged, 'Cube {} converged.'.format(bot.mac_address)]
+        
         lights = bot.read_light_sensors()
         center = tuple(bot.find_plane())
-
         ratio = max(lights['forward'], lights['reverse']) / float(max(lights.values()))
 
         if center == (0, 0, 1) or center == (0, 0, -1):
@@ -34,7 +37,7 @@ class RandomLightPlanner(Planner):
         elif lights['forward'] > lights['reverse']:
             return [bot.do_action, self._traverse, 'forward']
         else:
-            return [bot.do_action, self._traverse, 'forward']
+            return [bot.do_action, self._traverse, 'reverse']
     
     def _random_jump(self, bot):
         center = tuple(bot.find_plane())

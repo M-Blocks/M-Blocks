@@ -6,8 +6,9 @@ from multiprocessing.dummy import Pool as ThreadPool
 
 class LatticeLightPlanner(Planner):
     def __init__(self, bots, thresh=100, ratio=0.7,
-                     traverse='traverse', change='change_plane'):
-        super(LatticeLightPlanner, self).__init__(bots)
+                     traverse='traverse', change='change_plane',
+                     stop_fn=None):
+        super(LatticeLightPlanner, self).__init__(bots, stop_fn)
 
         self._traverse = traverse
         self._change = change
@@ -22,13 +23,21 @@ class LatticeLightPlanner(Planner):
         return moves
 
     def _find_move(self, bot):
+        def converged(s):
+            print(s)
+        if stop_fn and stop_fn(bot):
+            return [converged, 'Cube {} converged.'.format(bot.mac_address)]
+        
         light_values = bot.read_light_sensors()
         sorted_values = sorted(light_values.items(), key=operator.itemgetter(1), reverse=True)
-
         for face, val in sorted_values:
             if face == 'top' or face == 'bottom':
                 continue
-            if face == 'forward' or face == 'reverse':
+
+            plane = tuple(bot.find_plane())
+            if plane == (0, 0, 1) or plane == (0, 0, -1):
+                return [bot.change_plane, new_plane]
+            elif face == 'forward' or face == 'reverse':
                 return [bot.do_action, self._traverse, face]
             else:
                 center_d = tuple(bot.find_plane())

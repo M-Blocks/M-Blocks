@@ -16,18 +16,18 @@ There is a file called `demo_utils.py` that helps with connections. My workflow 
 
 Open IPython and cd into M-Blocks. Run the following:
 
-   from demo_utils import *
-   cubes = [Cube(port) for port in ports]
+    from demo_utils import *
+    cubes = [Cube(port) for port in ports]
 
 Create a planner and perform a few moves:
 
-   planner = LatticeLightPlanner(cubes)
-   moves = planner.next_moves()
-   planner.execute_moves(moves)
+    planner = LatticeLightPlanner(cubes)
+    moves = planner.next_moves()
+    planner.execute_moves(moves)
 
 If things broke, disconnect from everything:
 
-   close_conns()
+    close_conns()
 
 The two commands
 

@@ -4,7 +4,7 @@ from collections import defaultdict
 from multiprocessing.dummy import Pool as ThreadPool
 
 class RandomLightPlanner(Planner):
-    def __init__(self, bots, thresh=100, ratio=0.5,
+    def __init__(self, bots, thresh=100, ratio=0.8,
                      traverse='traverse',
                      stop_fn=None):
         super(RandomLightPlanner, self).__init__(bots, stop_fn)
@@ -22,12 +22,14 @@ class RandomLightPlanner(Planner):
     def _find_move(self, bot):
         def converged(s):
             print(s)
-        if stop_fn and stop_fn(bot):
+        if self.stop_fn and self.stop_fn(bot):
             return [converged, 'Cube {} converged.'.format(bot.mac_address)]
         
         lights = bot.read_light_sensors()
         center = tuple(bot.find_plane())
-        ratio = max(lights['forward'], lights['reverse']) / float(max(lights.values()))
+        light2d = [l for f, l in lights.items() if f != 'top' and f != 'bottom']
+
+        ratio = max(lights['forward'], lights['reverse']) / float(max(light2d))
 
         if center == (0, 0, 1) or center == (0, 0, -1):
             return self._random_jump(bot)
@@ -42,6 +44,6 @@ class RandomLightPlanner(Planner):
     def _random_jump(self, bot):
         center = tuple(bot.find_plane())
         if center == (0, 0, 1) or center == (0, 0, -1):
-            return [bot.ser.write, 'bldcaccel f 6000 700\n']
+            return [bot.ser.write, 'bldcaccel f 7000 700\n']
         else:
-            return [bot.ser.write, 'cp b f 5000 50\n']
+            return [bot.ser.write, 'ia f 8000 4000 10\n']

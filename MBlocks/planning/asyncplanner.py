@@ -1,3 +1,5 @@
+import time
+
 from multiprocessing.dummy import Pool as ThreadPool
 
 class AsyncPlanner(object):
@@ -20,3 +22,4 @@ class AsyncPlanner(object):
         for i in range(self.steps):
             moves = planner.next_moves()
             planner.execute_moves(moves)
+            time.sleep(2.0)

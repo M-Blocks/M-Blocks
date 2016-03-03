@@ -47,9 +47,9 @@ class Cube(object):
             self.connected = True
 
             if mac_address:
-                self.mac_address = mac_address
+                self.mac_address = mac_address.strip().lower()
             else:
-                self.mac_address = self.read_mac_address()                
+                self.mac_address = self.read_mac_address().strip().lower()               
 
             self.__reset = reset
             self.__cache = defaultdict(lambda: None)
@@ -63,7 +63,7 @@ class Cube(object):
             self.find_config()
 
             self._best_face = None
-            self._best_light()
+            # self._best_light()
 
             # self._find_neighbors()
         except NoCubeException:
@@ -74,19 +74,18 @@ class Cube(object):
             raise
 
     def disconnect(self):
+        """Disconnect the cube. Also stops the motor and shuts off the lights."""
+        if not self.connected:
+            return
+
         self.connected = False
         self.__cache = defaultdict(lambda: None)
-        
-        """Disconnect the cube. Also stops the motor and shuts off the lights."""
-        if not self.ser.isOpen():
-            self.ser.open()
 
         if self.__timer_light:
             self.__timer_light.cancel()
         if self.__timer_neigh:
             self.__timer_neigh.cancel()
-            
-        self.ser.write('fbrgbled off tb 1 2 3 4 5 6\n')
+
         self.ser.write('blediscon\n')
         self.ser.close()
 
@@ -109,6 +108,7 @@ class Cube(object):
             timeout = time.time() + 20.0
             while True:
                 if time.time() > timeout:
+                    self.ser.write('bldcstop\n')
                     return
                 line = self.ser.readline()
                 if 'Successfully' in line or 'Failed' in line:
@@ -122,6 +122,24 @@ class Cube(object):
         finally:
             self.mutex.release()
 
+    def do_action_repeated(self, action, direction):
+        command = self.__calibrate[action, direction]
+        elems = command.split()
+        
+        imu_now = self.read_imu('c')
+        self.do_action(action, direction)
+        if elems[0] == 'cp':
+            return
+
+        time.sleep(1.0)
+        imu_fut = self.read_imu('c')
+
+        if config_now == config_fut:
+            print('Move {} failed. Retrying with modified calibration table.'.format(command))
+            elems[3] = str(int(elems[3]) + int(elems[3]) / 10)
+            self.__calibrate[action, direction] = ' '.join(elems)
+            self.do_action_repeated(action, direction)
+
     def change_plane(self, alignment):
         """Change plane to align with a specified alignment.
 
@@ -129,7 +147,7 @@ class Cube(object):
         """
         planes = [(0, 0, 1), (1, -1, 0), (1, 1, 0)]
         index = planes.index(alignment)
-        
+       
         def get_alignment():
             plane = self.find_plane()
             if plane is None or plane == []:
@@ -140,7 +158,7 @@ class Cube(object):
 
         try_num = 0
         i, current = get_alignment()
-        while True:
+        while try_num <= 6:
             try_num += 1
             if planes[i] == alignment:
                 break
@@ -268,7 +286,7 @@ class Cube(object):
             self.ser.write('imuselect {0}\n'.format(sensor))
             self.ser.write('imugravity\n')
 
-            timeout = time.time() + 5.0
+            timeout = time.time() + 4.0
             while True:
                 if time.time() > timeout:
                     return []
@@ -338,9 +356,13 @@ class Cube(object):
         plane_f = self.find_angles('f')
         print plane_c, plane_f
 
-        while plane_f == [] and self.__reset:
-            self.restart('f')
-            plane_f = self.find_angles('f')
+        while plane_c == [] and self.__reset:
+            self.restart()
+            plane_c = self.find_angles('c')
+            
+        # while plane_f == [] and self.__reset:
+        #     self.restart('f')
+        #     plane_f = self.find_angles('f')
             
         if plane_f != []:
             for config in self.__configs:
@@ -386,11 +408,13 @@ class Cube(object):
         result = {}
         labels = next(cr)
         for row in cr:
-            mac_address = row[0].translate(None, ':').lower()
+            mac_address = row[0].translate(None, ':').strip().lower()
             if mac_address == self.mac_address or row[0] == 'DEFAULT':
                 direction = row[5].strip()
                 for i in range(6, len(labels)):
                     result[labels[i].strip(), direction] = row[i].strip()
+                if direction == 'reverse':
+                    break
 
         return result
 

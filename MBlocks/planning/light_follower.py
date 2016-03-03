@@ -25,7 +25,7 @@ class LatticeLightPlanner(Planner):
     def _find_move(self, bot):
         def converged(s):
             print(s)
-        if stop_fn and stop_fn(bot):
+        if self.stop_fn and self.stop_fn(bot):
             return [converged, 'Cube {} converged.'.format(bot.mac_address)]
         
         light_values = bot.read_light_sensors()
@@ -36,7 +36,7 @@ class LatticeLightPlanner(Planner):
 
             plane = tuple(bot.find_plane())
             if plane == (0, 0, 1) or plane == (0, 0, -1):
-                return [bot.change_plane, new_plane]
+                return [bot.change_plane, (1, 1, 0)]
             elif face == 'forward' or face == 'reverse':
                 return [bot.do_action, self._traverse, face]
             else:

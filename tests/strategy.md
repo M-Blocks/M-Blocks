@@ -17,7 +17,7 @@ There is a file called `demo_utils.py` that helps with connections. My workflow 
 Open IPython and cd into M-Blocks. Run the following:
 
     from demo_utils import *
-    cubes = [Cube(port) for port in ports]
+    cubes = find_cubes()
 
 Create a planner and perform a few moves:
 

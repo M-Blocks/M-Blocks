@@ -1,27 +1,41 @@
 # How to test and what to do if things break.
 
-Hi,
+Download [IPython](http://ipython.org/) and make sure you have pip.
 
-We're going to be running experiments all through the next week. I'll be around for most of them, but in case I'm not there, here's what I want:
+Clone the Github repository from [https://github.com/sebastian-claici/M-Blocks](https://github.com/sebastian-claici/M-Blocks).
+
+Open a terminal in the directory and run `pip install -r requirements.txt` to fetch all packages needed to run the code.
 
 ## Single Cube Light Tracking
 
-We need to make sure that light tracking works for one cube. There are two planners in MBlocks.planning. The first does lattice planning, so the cube needs to be placed on top of a lattice of other static cubes. This planner uses many plane change operation, so prepare to be annoyed when things randomly fail.
+There are two planners in MBlocks.planning. The first does lattice planning, so the cube needs to be placed on top of a lattice of other static cubes. This planner uses many plane change operations, so prepare to be annoyed when things randomly fail.
 
 The other planner executes random moves when it does not find a good forward/reverse move. Unlike the previous planner, this has no stopping protocol. We could have used the same thresholding stopping condition, but I just want to see the cube vaguely moving towards the light source.
 
-Either of these planners can be run like this:
+There is a file called `demo_utils.py` that helps with connections. My workflow looked something like this:
 
-    from MBlocks.control.controller import Cube
-	from MBlocks.planning.planner import LatticeLightPlanner
-	
-    cube = Cube('com3')
-	planner = LatticeLightPlanner([cube]) # or RandomLightPlanner([cube])
-	while True:
-		moves = planner.next_moves()
-		planner.execute_moves(moves)
+1. Open IPython and cd into M-Blocks.
+2. Run the following:
 
-You can run these with more than one cube (just pass a list of all cubes), but we won't have neighbor detection, so expect poor performance.
+   from demo_utils import *
+   cubes = [Cube(port) for port in ports]
+
+3. Create a planner and perform a few moves:
+
+   planner = LatticeLightPlanner(cubes)
+   moves = planner.next_moves()
+   planner.execute_moves(moves)
+
+4. If things broke, disconnect from everything:
+
+   close_conns()
+
+The two commands
+
+    moves = planner.next_moves()
+    planner.execute_moves(moves)
+
+will run one iteration of the planner. Just use them again to do it all over. This is better than running it in a loop from my experience.
 
 ## Two Cube Light Tracking
 
@@ -33,11 +47,9 @@ Both cubes need to be able to read both the faceboard and central IMU with 100% 
 	fst = Cube('com3')
 	scd = Cube('com4')
 	control = TwoCubeController(fst, scd)
-	while True:
-		control.drive()
+
+Then you can use `control.drive()` to do one step of the process (involving reorientation + two traverses).
 
 ## Failure
 
-If things fail (and I expect they will several times), I want to have all the information. Screenshot the terminal, write print statements to output information (e.g. print out `moves`), or just describe what happened. The code is in a good place, but since testing involves running it on the cubes, and the cubes themselves are fickle beings, I expect bugs to still be lurking.
-
-I've committed the most up-to-date version to github on branch master.
+If the cubes fail, and you can't type into the IPython window anymore, open up a new IPython window, import `demo_utils` and run `close_conns()`.

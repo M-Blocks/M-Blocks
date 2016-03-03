@@ -14,19 +14,18 @@ The other planner executes random moves when it does not find a good forward/rev
 
 There is a file called `demo_utils.py` that helps with connections. My workflow looked something like this:
 
-1. Open IPython and cd into M-Blocks.
-2. Run the following:
+Open IPython and cd into M-Blocks. Run the following:
 
    from demo_utils import *
    cubes = [Cube(port) for port in ports]
 
-3. Create a planner and perform a few moves:
+Create a planner and perform a few moves:
 
    planner = LatticeLightPlanner(cubes)
    moves = planner.next_moves()
    planner.execute_moves(moves)
 
-4. If things broke, disconnect from everything:
+If things broke, disconnect from everything:
 
    close_conns()
 

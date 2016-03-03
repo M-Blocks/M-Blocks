@@ -5,7 +5,7 @@ from MBlocks.planning.light_follower import LatticeLightPlanner
 from serial.tools.list_ports import comports
 from serial import Serial
 
-macs = ['d89c0041e419', 'fb0d8f2c3bb4', 'e6f6056908f2', 'cd2b5eab3ef3', 'df1ce4239c6e']
+macs = ['d89c0041e41', 'fb0d8f2c3bb4', 'e6f6056908f2', 'cd2b5eab3ef3', 'df1ce4239c6e']
 
 def ports():
     ps = [c[0] for c in comports()]
@@ -25,3 +25,13 @@ def close_conns():
 def shake_cubes(cubes):
     for cube in cubes:
         cube.ser.write('ia f 3500 2500 10\n')
+
+def find_cubes():
+    cubes = []
+    for port in ports():
+        try:
+            cube = Cube(port)
+            cubes.append(cube)
+        except:
+            pass
+    return cubes
